@@ -465,7 +465,7 @@
 
   <!-- Modal: Batch Add Poker Results -->
   <div id="addPokerModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-2xl rounded-2xl p-5 fade-in shadow-xl max-h-[90vh] overflow-y-auto space-y-3">
+    <div class="bg-white w-full max-w-3xl rounded-2xl p-5 fade-in shadow-xl max-h-[90vh] overflow-y-auto space-y-3">
       <div class="flex justify-between items-center border-b pb-2">
         <h3 class="text-lg font-bold">♠️ บันทึกผล Poker แบบตารางหลายคน</h3>
         <button onclick="closeAddPokerModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
@@ -492,15 +492,39 @@
             <thead>
               <tr class="bg-slate-100 text-slate-700">
                 <th class="p-1.5 text-left">ชื่อผู้เล่น (Player)</th>
-                <th class="p-1.5 text-right w-24">Buyin</th>
-                <th class="p-1.5 text-right w-28">Chips Cashed</th>
-                <th class="p-1.5 text-center w-12">ลบ</th>
+                <th class="p-1.5 text-right w-20">Buyin</th>
+                <th class="p-1.5 text-right w-24">Chips Cashed</th>
+                <th class="p-1.5 text-right w-20">ได้/เสีย (ชิป)</th>
+                <th class="p-1.5 text-right w-24">เงิน (CAD)</th>
+                <th class="p-1.5 text-center w-8">ลบ</th>
               </tr>
             </thead>
             <tbody id="pkBatchTbody" class="divide-y divide-slate-100"></tbody>
           </table>
         </div>
       </div>
+
+      <!-- ค่าต๋ง (House) -->
+      <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+        <div class="flex flex-wrap items-end gap-2">
+          <div class="w-28">
+            <label class="block text-xs font-bold text-amber-800 mb-1">🏠 ค่าต๋ง House (ชิป)</label>
+            <input type="number" id="pk_rake" min="0" step="1" value="0" oninput="updatePokerCalc()" class="w-full rounded-lg border border-amber-300 px-2 py-1 text-xs text-right">
+          </div>
+          <div class="text-xs text-amber-800 pb-1">= <b id="pk_rakeCad">$0.00 CAD</b></div>
+          <button type="button" id="pk_rakeFillBtn" onclick="fillRakeFromDiff()" class="hidden text-[11px] bg-amber-600 hover:bg-amber-700 text-white font-semibold px-2.5 py-1 rounded-lg">ใช้ส่วนต่างเป็นค่าต๋ง</button>
+          <input type="text" id="pk_rakeNote" placeholder="โน้ตค่าต๋ง (ถ้ามี)" class="flex-1 min-w-[120px] rounded-lg border border-amber-300 px-2 py-1 text-xs">
+        </div>
+      </div>
+
+      <!-- สรุปยอดรอบนี้ -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+        <div class="rounded-xl bg-slate-50 border p-2"><div class="text-slate-500">ชิปซื้อรวม</div><div id="pk_totBuyin" class="font-bold">0</div></div>
+        <div class="rounded-xl bg-slate-50 border p-2"><div class="text-slate-500">ชิปแลกคืนรวม</div><div id="pk_totCashed" class="font-bold">0</div></div>
+        <div class="rounded-xl bg-slate-50 border p-2"><div class="text-slate-500">ค่าต๋ง</div><div id="pk_totRake" class="font-bold">0</div></div>
+        <div id="pk_balanceBox" class="rounded-xl border p-2"><div class="text-slate-500">ส่วนต่าง</div><div id="pk_balance" class="font-bold">0</div></div>
+      </div>
+      <p id="pk_balanceMsg" class="text-[11px]"></p>
 
       <div class="flex gap-2 pt-2 border-t">
         <button type="button" onclick="closeAddPokerModal()" class="flex-1 rounded-xl bg-slate-200 hover:bg-slate-300 font-medium py-2 text-xs">ยกเลิก</button>
@@ -1249,23 +1273,80 @@ function loadPoker() {
   fetchData('getPokerData', 'poker', setPoker);
 }
 
-function openAddPokerModal() {
-  if ($('pk_modalDate')) $('pk_modalDate').value = $('pkFilterDate') ? $('pkFilterDate').value : todayStr();
-  if ($('pkBatchTbody')) $('pkBatchTbody').innerHTML = '';
-  ['Thon', 'Fah', 'Fern', 'Khim'].forEach(function(name) { addPokerRow(name, 1000, 1000); });
-  if ($('addPokerModal')) $('addPokerModal').classList.remove('hidden');
+var CHIPS_PER_CAD = 100;   // 100 Chips = C$1
+function chipsToCad(c) { return (Number(c) || 0) / CHIPS_PER_CAD; }
+function signClass(v) { return v > 0 ? 'text-emerald-600' : (v < 0 ? 'text-red-600' : 'text-slate-500'); }
+function fmtChips(v) { v = Number(v) || 0; return (v > 0 ? '+' : '') + v.toLocaleString(); }
+
+function nextSessionId(date) {
+  var max = 0;
+  (pokerData.results || []).concat(pokerData.rake || []).forEach(function(r) {
+    if (r.date === date) { var n = parseInt(r.sessionId, 10); if (!isNaN(n) && n > max) max = n; }
+  });
+  return String(max + 1);
 }
-function closeAddPokerModal() { if ($('addPokerModal')) $('addPokerModal').classList.add('hidden'); }
+
+function openAddPokerModal() {
+  var date = $('pkFilterDate').value || todayStr();
+  $('pk_modalDate').value = date;
+  $('pk_modalSessionId').value = nextSessionId(date);
+  $('pkBatchTbody').innerHTML = '';
+  $('pk_rake').value = 0;
+  $('pk_rakeNote').value = '';
+  ['Thon', 'Fah', 'Fern', 'Khim'].forEach(function(name) { addPokerRow(name, 1000, 1000); });
+  updatePokerCalc();
+  $('addPokerModal').classList.remove('hidden');
+}
+function closeAddPokerModal() { $('addPokerModal').classList.add('hidden'); }
 
 function addPokerRow(name, buyin, cashed) {
   var tbody = $('pkBatchTbody');
-  if (!tbody) return;
   var tr = document.createElement('tr');
   tr.innerHTML = '<td class="p-1.5"><input type="text" class="pk-name w-full rounded-lg border px-2 py-1 text-xs" value="' + esc(name || '') + '"></td>' +
-    '<td class="p-1.5"><input type="number" class="pk-buyin w-full rounded-lg border px-2 py-1 text-xs text-right" value="' + (buyin || 1000) + '"></td>' +
-    '<td class="p-1.5"><input type="number" class="pk-cashed w-full rounded-lg border px-2 py-1 text-xs text-right" value="' + (cashed || 1000) + '"></td>' +
-    '<td class="p-1.5 text-center"><button type="button" onclick="this.closest(\'tr\').remove()" class="text-red-500 font-bold">&times;</button></td>';
+    '<td class="p-1.5"><input type="number" inputmode="numeric" class="pk-buyin w-full rounded-lg border px-2 py-1 text-xs text-right" value="' + (buyin === undefined ? 1000 : buyin) + '"></td>' +
+    '<td class="p-1.5"><input type="number" inputmode="numeric" class="pk-cashed w-full rounded-lg border px-2 py-1 text-xs text-right" value="' + (cashed === undefined ? 0 : cashed) + '"></td>' +
+    '<td class="p-1.5 text-right font-semibold pk-gain">0</td>' +
+    '<td class="p-1.5 text-right font-bold pk-cad">$0.00</td>' +
+    '<td class="p-1.5 text-center"><button type="button" onclick="this.closest(\'tr\').remove(); updatePokerCalc();" class="text-red-500 font-bold">&times;</button></td>';
+  tr.querySelectorAll('input').forEach(function(inp) { inp.addEventListener('input', updatePokerCalc); });
   tbody.appendChild(tr);
+  updatePokerCalc();
+}
+
+var pokerDiff = 0;
+// คำนวณสดทุกครั้งที่พิมพ์: ได้/เสียต่อคน, เป็นเงิน, ยอดรวม, ค่าต๋ง และเช็กว่าชิปลงตัวไหม
+function updatePokerCalc() {
+  var totBuyin = 0, totCashed = 0;
+  document.querySelectorAll('#pkBatchTbody tr').forEach(function(tr) {
+    var buyin = Number(tr.querySelector('.pk-buyin').value) || 0;
+    var cashed = Number(tr.querySelector('.pk-cashed').value) || 0;
+    var gain = cashed - buyin;
+    totBuyin += buyin; totCashed += cashed;
+    var g = tr.querySelector('.pk-gain'), c = tr.querySelector('.pk-cad');
+    g.textContent = fmtChips(gain); g.className = 'p-1.5 text-right font-semibold pk-gain ' + signClass(gain);
+    c.textContent = money(chipsToCad(gain)).replace(' CAD', ''); c.className = 'p-1.5 text-right font-bold pk-cad ' + signClass(gain);
+  });
+  var rake = Number($('pk_rake').value) || 0;
+  $('pk_rakeCad').textContent = money(chipsToCad(rake));
+  $('pk_totBuyin').textContent = totBuyin.toLocaleString() + ' (' + money(chipsToCad(totBuyin)).replace(' CAD', '') + ')';
+  $('pk_totCashed').textContent = totCashed.toLocaleString() + ' (' + money(chipsToCad(totCashed)).replace(' CAD', '') + ')';
+  $('pk_totRake').textContent = rake.toLocaleString() + ' (' + money(chipsToCad(rake)).replace(' CAD', '') + ')';
+
+  // ชิปที่ซื้อทั้งหมด = ชิปที่แลกคืน + ค่าต๋ง  → ส่วนต่างควรเป็น 0
+  pokerDiff = totBuyin - totCashed - rake;
+  $('pk_balance').textContent = fmtChips(pokerDiff);
+  var ok = pokerDiff === 0;
+  $('pk_balanceBox').className = 'rounded-xl border p-2 ' + (ok ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700');
+  $('pk_balanceMsg').className = 'text-[11px] ' + (ok ? 'text-emerald-700' : 'text-red-600');
+  $('pk_balanceMsg').textContent = ok ? '✅ ชิปลงตัว (ซื้อ = แลกคืน + ค่าต๋ง)'
+    : (pokerDiff > 0 ? '⚠️ ชิปหายไป ' + pokerDiff.toLocaleString() + ' ชิป — ถ้าเป็นค่าต๋ง กด "ใช้ส่วนต่างเป็นค่าต๋ง"'
+                     : '⚠️ ชิปแลกคืนเกินกว่าที่ซื้อ ' + (-pokerDiff).toLocaleString() + ' ชิป — ตรวจตัวเลขอีกครั้ง');
+  $('pk_rakeFillBtn').classList.toggle('hidden', !(pokerDiff > 0));
+}
+
+function fillRakeFromDiff() {
+  $('pk_rake').value = (Number($('pk_rake').value) || 0) + pokerDiff;
+  updatePokerCalc();
 }
 
 function submitPokerBatch() {
@@ -1275,13 +1356,15 @@ function submitPokerBatch() {
     if (name) rows.push({ player: name, buyin: tr.querySelector('.pk-buyin').value, cashedOut: tr.querySelector('.pk-cashed').value });
   });
   if (!rows.length) return alert('กรุณากรอกข้อมูลผู้เล่น');
+  updatePokerCalc();
+  if (pokerDiff !== 0 && !confirm('ชิปยังไม่ลงตัว (ส่วนต่าง ' + fmtChips(pokerDiff) + ' ชิป)\nต้องการบันทึกต่อหรือไม่?')) return;
 
   var btn = $('pk_submitBtn');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'กำลังบันทึก...';
-  }
-  var payload = { date: $('pk_modalDate').value || todayStr(), sessionId: $('pk_modalSessionId').value || '1', rows: rows };
+  setBusy(btn, true);
+  var payload = {
+    date: $('pk_modalDate').value || todayStr(), sessionId: $('pk_modalSessionId').value || '1', rows: rows,
+    rakeChips: Number($('pk_rake').value) || 0, rakeNote: $('pk_rakeNote').value.trim()
+  };
   callServer('addPokerBatchResults', [payload], function(res) {
     setBusy(btn, false, 'บันทึกทั้งหมดลงชีต');
     closeAddPokerModal();
@@ -1326,6 +1409,22 @@ function renderPokerDashboard() {
     yearL.push(p); yearV.push(s.year);
   });
 
+  var h = { day: 0, month: 0, year: 0, all: 0 };
+  (pokerData.rake || []).forEach(function(r) {
+    var v = r.cad || 0;
+    h.all += v;
+    if (r.date.substring(0, 4) === selYear) h.year += v;
+    if (r.date.substring(0, 7) === selMonth) h.month += v;
+    if (r.date === selDate) h.day += v;
+  });
+  if (h.all) {
+    tbody += '<tr class="bg-amber-50"><td class="p-2 font-bold text-amber-800">🏠 House (ค่าต๋ง)</td>' +
+      ['day', 'month', 'year', 'all'].map(function(k) { return '<td class="p-2 text-right font-semibold text-amber-700">' + money(h[k]) + '</td>'; }).join('') + '</tr>';
+    dayL.push('House'); dayV.push(h.day);
+    monthL.push('House'); monthV.push(h.month);
+    yearL.push('House'); yearV.push(h.year);
+  }
+
   if ($('pkDashboardTbody')) $('pkDashboardTbody').innerHTML = tbody || '<tr><td colspan="5" class="text-center py-4 text-slate-400">ยังไม่มีข้อมูล</td></tr>';
 
   renderPokerChart('chartPokerDay', dayL, dayV);
@@ -1339,21 +1438,33 @@ function renderPokerChart(canvasId, labels, data) {
   if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
   chartInstances[canvasId] = new Chart(el.getContext('2d'), {
     type: 'bar',
-    data: { labels: labels, datasets: [{ data: data, backgroundColor: data.map(function(v) { return v >= 0 ? '#10b981' : '#ef4444'; }), borderRadius: 6 }] },
+    data: { labels: labels, datasets: [{ data: data, backgroundColor: data.map(function(v, i) { return labels[i] === 'House' ? '#f59e0b' : (v >= 0 ? '#10b981' : '#ef4444'); }), borderRadius: 6 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
   });
 }
 
 function renderPokerRawTable() {
+  var rows = (pokerData.results || []).map(function(r, i) { return { k: 'p', r: r, i: i }; })
+    .concat((pokerData.rake || []).map(function(r, i) { return { k: 'h', r: r, i: i }; }));
+  rows.sort(function(a, b) { return (b.r.date || '').localeCompare(a.r.date || '') || String(b.r.sessionId).localeCompare(String(a.r.sessionId)) || (a.k === 'h' ? 1 : -1); });
   var html = '';
-  (pokerData.results || []).forEach(function(r) {
+  rows.forEach(function(x) {
+    var r = x.r;
+    if (x.k === 'h') {
+      html += '<tr class="bg-amber-50"><td class="p-2">' + esc(r.date) + '</td><td class="p-2">' + esc(r.sessionId) + '</td>' +
+        '<td class="p-2 font-bold text-amber-800">🏠 House (ค่าต๋ง)' + (r.note ? ' <span class="font-normal text-amber-600">· ' + esc(r.note) + '</span>' : '') + '</td>' +
+        '<td class="p-2 text-right">-</td><td class="p-2 text-right">-</td>' +
+        '<td class="p-2 text-right font-semibold text-amber-700">' + Number(r.chips).toLocaleString() + '</td>' +
+        '<td class="p-2 text-right font-bold text-amber-700">' + money(r.cad) + '</td></tr>';
+      return;
+    }
     html += '<tr class="hover:bg-slate-50"><td class="p-2">' + esc(r.date) + '</td><td class="p-2">' + esc(r.sessionId) + '</td>' +
       '<td class="p-2 font-bold">' + esc(r.player) + '</td><td class="p-2 text-right">' + Number(r.buyin).toLocaleString() + '</td>' +
       '<td class="p-2 text-right">' + Number(r.chipsCashedOut).toLocaleString() + '</td>' +
       '<td class="p-2 text-right font-semibold ' + (r.lossGainChips >= 0 ? 'text-emerald-600' : 'text-red-600') + '">' + Number(r.lossGainChips).toLocaleString() + '</td>' +
       '<td class="p-2 text-right font-bold ' + (r.payoutCAD >= 0 ? 'text-emerald-600' : 'text-red-600') + '">' + money(r.payoutCAD) + '</td></tr>';
   });
-  if ($('pkRawTbody')) $('pkRawTbody').innerHTML = html || '<tr><td colspan="7" class="text-center py-4 text-slate-400">ยังไม่มีประวัติ</td></tr>';
+  $('pkRawTbody').innerHTML = html || '<tr><td colspan="7" class="text-center py-4 text-slate-400">ยังไม่มีประวัติ</td></tr>';
 }
 
 var petSearchBoxEl = $('petSearchBox');

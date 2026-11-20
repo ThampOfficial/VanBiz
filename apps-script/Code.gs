@@ -15,8 +15,10 @@ const CONFIG = {
     JOBS: 'Jobs',
     PHOTOS: 'AnimalPhotos',
     CARE_LOG: 'PetCareLog',
-    POKER: 'Poker'
-  }
+    POKER: 'Poker',
+    POKER_RAKE: 'Poker_HouseRake'
+  },
+  CHIPS_PER_CAD: 100   // 100 Chips = C$1
 };
 
 function doGet() {
@@ -816,12 +818,36 @@ function getPokerData_() {
         const lossGainChips = cashedOut - buyin;
         results.push({
           date: dt, sessionId: toText_(r[1]) || '1', player: player,
-          buyin: buyin, chipsCashedOut: cashedOut, lossGainChips: lossGainChips, payoutCAD: lossGainChips / 100
+          buyin: buyin, chipsCashedOut: cashedOut, lossGainChips: lossGainChips, payoutCAD: lossGainChips / CONFIG.CHIPS_PER_CAD
         });
       }
     });
   }
-  return { results: results.reverse() };
+  return { results: results.reverse(), rake: getPokerRake_() };
+}
+
+function getPokerRakeSheet_() {
+  const ss = ss_();
+  let sh = ss.getSheetByName(CONFIG.SHEETS.POKER_RAKE);
+  if (!sh) {
+    sh = ss.insertSheet(CONFIG.SHEETS.POKER_RAKE);
+    sh.appendRow(['Date', 'SessionID', 'HouseRakeChips', 'Notes']);
+  }
+  return sh;
+}
+
+// ค่าต๋ง (House) จากชีต Poker_HouseRake
+function getPokerRake_() {
+  const sh = getPokerRakeSheet_();
+  const lastRow = sh.getLastRow();
+  const out = [];
+  if (lastRow < 2) return out;
+  sh.getRange(2, 1, lastRow - 1, 4).getValues().forEach(r => {
+    const dt = fmtDate_(r[0]);
+    const chips = toNumber_(r[2]);
+    if (dt && chips) out.push({ date: dt, sessionId: toText_(r[1]) || '1', chips: chips, cad: chips / CONFIG.CHIPS_PER_CAD, note: toText_(r[3]) });
+  });
+  return out.reverse();
 }
 
 function addPokerBatchResults(payload) {
@@ -836,9 +862,11 @@ function addPokerBatchResults(payload) {
       const buyin = toNumber_(row.buyin);
       const cashedOut = toNumber_(row.cashedOut);
       const lossGain = cashedOut - buyin;
-      rows.push([date, sessionId, String(row.player).trim(), buyin, cashedOut, lossGain, lossGain / 100]);
+      rows.push([date, sessionId, String(row.player).trim(), buyin, cashedOut, lossGain, lossGain / CONFIG.CHIPS_PER_CAD]);
     });
     if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, 7).setValues(rows);
+    const rake = toNumber_(payload.rakeChips);
+    if (rake) getPokerRakeSheet_().appendRow([date, sessionId, rake, payload.rakeNote || '']);
     SpreadsheetApp.flush();
     invalidate_();
   });
