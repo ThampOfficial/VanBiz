@@ -23,6 +23,7 @@
     <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
       <h1 class="text-lg font-bold">🐾 Pet Sitter, Inventory & Poker</h1>
       <div class="flex items-center gap-2">
+        <span id="syncBadge" class="hidden text-[11px] text-indigo-100 animate-pulse">กำลังอัปเดต…</span>
         <button id="keyBtn" onclick="showLogin()" title="รหัสเข้าใช้ / ลิงก์ Apps Script" class="hidden text-sm bg-white/20 hover:bg-white/30 rounded-full px-2.5 py-1">🔑</button>
         <button onclick="refreshData()" class="text-sm bg-white/20 hover:bg-white/30 rounded-full px-3 py-1">รีเฟรช</button>
       </div>
@@ -533,6 +534,7 @@ var chartInstances = {};
 var currentJobsCache = [];
 
 function $(id) { return document.getElementById(id); }
+function jsq(s) { return esc(String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")); }
 function esc(s) { return s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 function money(n) { var v = Number(n || 0); return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' CAD'; }
 function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -656,20 +658,59 @@ function previewFile(input, previewId) {
 
 function findPet(id) { return petsData.find(function(x) { return String(x.id) === String(id); }); }
 
+// รูปย่อจาก lh3 (โหลดเร็วกว่ารูปเต็มมาก) — ถ้าโหลดไม่ได้จะลองรูปเต็ม แล้วค่อยลองลิงก์ drive
+function driveId(url) { var m = String(url || '').match(/[-\w]{25,}/); return m ? m[0] : ''; }
+function thumbUrl(url, size) {
+  if (/googleusercontent\.com\/d\/[-\w]+$/.test(url || '')) return url + '=w' + size + '-h' + size + '-c';
+  return url;
+}
+function imgFallback(el) {
+  var step = parseInt(el.dataset.step || '0', 10) + 1;
+  el.dataset.step = step;
+  var id = el.dataset.id;
+  if (step === 1 && el.dataset.full && el.src !== el.dataset.full) { el.src = el.dataset.full; return; }
+  if (step <= 2 && id) { el.src = 'https://drive.google.com/thumbnail?id=' + id + '&sz=w400'; return; }
+  el.onerror = null;
+  el.outerHTML = '<div class="h-20 w-20 rounded-xl shrink-0 bg-slate-100 flex items-center justify-center text-2xl">🐾</div>';
+}
 function renderImage(url) {
   if (url && typeof url === 'string' && url.indexOf('http') === 0) {
-    var fileId = '';
-    var match = url.match(/[-\w]{25,}/);
-    if (match) fileId = match[0];
-    
-    var primaryUrl = url;
-    var fallbackUrl = fileId ? 'https://drive.google.com/uc?export=view&id=' + fileId : url;
-
-    return '<img src="' + esc(primaryUrl) + '" ' +
-      'onerror="if(this.src!=\'' + esc(fallbackUrl) + '\'){this.src=\'' + esc(fallbackUrl) + '\';}else{this.onerror=null;this.parentNode.innerHTML=\'<div class=\\\'h-20 w-20 rounded-xl shrink-0 bg-slate-100 flex items-center justify-center text-2xl\\\'>🐾</div>\';}" ' +
+    return '<img src="' + esc(thumbUrl(url, 200)) + '" data-full="' + esc(url) + '" data-id="' + esc(driveId(url)) + '" ' +
+      'onerror="imgFallback(this)" loading="lazy" decoding="async" ' +
       'class="h-20 w-20 rounded-xl shrink-0 bg-slate-100 object-cover" referrerpolicy="no-referrer">';
   }
   return '<div class="h-20 w-20 rounded-xl shrink-0 bg-slate-100 flex items-center justify-center text-2xl">🐾</div>';
+}
+
+// ===== แคชในเครื่อง: โชว์ข้อมูลล่าสุดทันที แล้วค่อยอัปเดตจากชีตเบื้องหลัง =====
+var LS_PREFIX = 'vanbiz_cache_';
+function lsGet(k) { try { var v = localStorage.getItem(LS_PREFIX + k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(LS_PREFIX + k, JSON.stringify(v)); } catch (e) {} }
+var FORCE = false;   // true = ข้ามแคชฝั่งเซิร์ฟเวอร์ (ปุ่มรีเฟรช)
+var syncCount = 0;
+function syncing(delta) {
+  syncCount = Math.max(0, syncCount + delta);
+  var el = $('syncBadge');
+  if (el) el.classList.toggle('hidden', syncCount === 0);
+}
+function fetchData(fnName, key, onData, onFail) {
+  syncing(1);
+  callServer(fnName, [FORCE], function(d) { syncing(-1); lsSet(key, d); onData(d); },
+    function(msg) { syncing(-1); if (onFail) onFail(msg); });
+}
+function setPets(d) { petsData = d || []; lsSet('pets', petsData); renderPets(); }
+function setProducts(d) { productsData = d || []; lsSet('products', productsData); renderProducts(); }
+function setPoker(d) { pokerData = d || { results: [] }; lsSet('poker', pokerData); renderPokerDashboard(); renderPokerRawTable(); }
+
+var prefetched = false;
+function prefetchOthers() {
+  if (prefetched) return;
+  prefetched = true;
+  setTimeout(function() {
+    fetchData('getProducts', 'products', function(d) { productsData = d || []; if (!$('page-inventory').classList.contains('hidden')) renderProducts(); });
+    fetchData('getRevenueSummary', 'summary', function() {});
+    fetchData('getPokerData', 'poker', function() {});
+  }, 300);
 }
 
 function switchTab(tab) {
@@ -681,24 +722,27 @@ function switchTab(tab) {
   $('tab-' + tab).className = 'flex-1 py-2.5 text-center font-semibold border-b-2 border-white text-white';
 
   if (tab === 'pets' && !petsData.length) loadPetData();
-  if (tab === 'inventory' && !productsData.length) loadProducts();
+  if (tab === 'inventory') loadProducts();
   if (tab === 'dashboard') loadDashboard();
   if (tab === 'poker') loadPoker();
 }
 
 function refreshData() {
-  petsData = []; productsData = [];
+  FORCE = true;
   if (!$('page-pets').classList.contains('hidden')) loadPetData();
   if (!$('page-inventory').classList.contains('hidden')) loadProducts();
   if (!$('page-dashboard').classList.contains('hidden')) loadDashboard();
   if (!$('page-poker').classList.contains('hidden')) loadPoker();
+  FORCE = false;
 }
 
 // === Pet Sitter Functions ===
 function loadPetData() {
-  if ($('petList')) $('petList').innerHTML = '<div class="flex justify-center py-10"><div class="spinner"></div></div>';
-  callServer('getPetSitterData', [], function(data) { petsData = data || []; renderPets(); },
-    function(msg) { if ($('petList')) $('petList').innerHTML = errorBox(msg); });
+  var cached = lsGet('pets');
+  if (cached && !petsData.length) { petsData = cached; renderPets(); }
+  else if (!petsData.length) $('petList').innerHTML = '<div class="flex justify-center py-10"><div class="spinner"></div></div>';
+  fetchData('getPetSitterData', 'pets', function(d) { setPets(d); prefetchOthers(); },
+    function(msg) { if (!petsData.length) $('petList').innerHTML = errorBox(msg); else alert('อัปเดตข้อมูลไม่สำเร็จ: ' + msg); });
 }
 
 function setPetFilter(cat) {
@@ -765,16 +809,16 @@ function renderPets() {
         renderImage(p.image) +
         '<div class="min-w-0 flex-1">' +
           '<div class="flex justify-between items-start pr-12">' +
-            '<div class="font-bold text-sm leading-tight text-slate-800 cursor-pointer" onclick="openJobsModal(\'' + esc(p.id) + '\')">' + esc(p.name) + '</div>' +
+            '<div class="font-bold text-sm leading-tight text-slate-800 cursor-pointer" onclick="openJobsModal(\'' + jsq(p.id) + '\')">' + esc(p.name) + '</div>' +
             '<span class="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-semibold border border-indigo-100">' + esc(p.category || 'Pet') + '</span>' +
           '</div>' +
-          '<button onclick="openEditAnimalModal(\'' + esc(p.id) + '\')" class="absolute top-3 right-3 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2 py-1 rounded-lg transition-colors">✏️ แก้ไข</button>' +
+          '<button onclick="openEditAnimalModal(\'' + jsq(p.id) + '\')" class="absolute top-3 right-3 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2 py-1 rounded-lg transition-colors">✏️ แก้ไข</button>' +
           '<div class="text-xs text-slate-600 font-medium mt-0.5">👤 เจ้าของ: ' + esc(p.owner || '-') + '</div>' +
           '<div class="text-xs text-slate-600 font-medium mt-0.5">💰 รายได้รวม: ' + revText + '</div>' +
           newestJobText +
           (p.location ? '<div class="text-xs text-slate-500 mt-1">📍 ที่อยู่: ' + esc(p.location) + (p.room ? ' (' + esc(p.room) + ')' : '') + '</div>' : '') +
           (p.note ? '<div class="text-xs bg-slate-50 p-2 rounded-xl border border-slate-100 text-slate-600 mt-2 whitespace-pre-line">📋 <b>รายละเอียดการดูแล:</b>\n' + esc(p.note) + '</div>' : '') +
-          '<button onclick="openJobsModal(\'' + esc(p.id) + '\')" class="mt-2 w-full text-center py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl">📅 ดู Jobs & รูปภาพเพิ่มเติม</button>' +
+          '<button onclick="openJobsModal(\'' + jsq(p.id) + '\')" class="mt-2 w-full text-center py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl">📅 ดู Jobs & รูปภาพเพิ่มเติม</button>' +
         '</div>' +
       '</div>';
   }
@@ -838,7 +882,7 @@ $('addAnimalForm').addEventListener('submit', function(e) {
     callServer(petId ? 'updateAnimal' : 'addAnimal', [payload], function(res) {
       setBusy(btn, false, 'บันทึกข้อมูล');
       closeAddAnimalModal();
-      if (res && res.pets) { petsData = res.pets; renderPets(); }
+      if (res && res.pets) { setPets(res.pets); }
     }, function(msg) {
       setBusy(btn, false, 'บันทึกข้อมูล');
       alert('เกิดข้อผิดพลาด: ' + msg);
@@ -924,7 +968,7 @@ function renderPhotos(photos) {
   }
   var html = '';
   photos.forEach(function(url) {
-    html += '<a href="' + esc(url) + '" target="_blank" class="w-[48%] shrink-0 snap-start"><img src="' + esc(url) + '" class="w-full h-28 rounded-xl object-cover border border-slate-200 shadow-sm" alt="Pet Photo" referrerpolicy="no-referrer" onerror="this.parentNode.style.display=\'none\';"></a>';
+    html += '<a href="' + esc(url) + '" target="_blank" class="w-[48%] shrink-0 snap-start"><img src="' + esc(thumbUrl(url, 600)) + '" loading="lazy" class="w-full h-28 rounded-xl object-cover border border-slate-200 shadow-sm" alt="Pet Photo" referrerpolicy="no-referrer" onerror="this.parentNode.style.display=\'none\';"></a>';
   });
   $('photoGallery').innerHTML = html;
 }
@@ -946,7 +990,7 @@ function renderJobs(jobs) {
           '<span>' + esc(j.type) + '</span>' +
           '<span class="text-emerald-600 font-bold text-sm">' + money(j.netTotal) + '</span>' +
         '</div>' +
-        '<button onclick="editJob(\'' + esc(j.jobId) + '\')" class="absolute top-2.5 right-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded">✏️ แก้ไข</button>' +
+        '<button onclick="editJob(\'' + jsq(j.jobId) + '\')" class="absolute top-2.5 right-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded">✏️ แก้ไข</button>' +
         '<div class="text-slate-500">🗓️ ' + esc(j.startDate || '-') + ' ถึง ' + esc(j.endDate || '-') + (j.source ? ' · ' + esc(j.source) : '') + '</div>' +
         (details.length ? '<div class="text-[11px] text-slate-600 bg-slate-50 px-2 py-1 rounded border border-slate-100 flex flex-wrap gap-x-3 gap-y-0.5">' + details.join(' | ') + '</div>' : '') +
         (j.note ? '<div class="text-[11px] text-slate-500">📝 ' + esc(j.note) + '</div>' : '') +
@@ -970,7 +1014,7 @@ $('addJobForm').addEventListener('submit', function(e) {
   callServer('saveJob', [payload], function(res) {
     resetJobForm();
     if (res && res.jobs) { currentJobsCache = res.jobs; renderJobs(res.jobs); }
-    if (res && res.pets) { petsData = res.pets; renderPets(); }
+    if (res && res.pets) { setPets(res.pets); }
   }, function(msg) {
     setBusy(btn, false, isEdit ? '💾 บันทึกการแก้ไข Job' : '+ บันทึก Job ใหม่');
     alert('เกิดข้อผิดพลาด: ' + msg);
@@ -979,9 +1023,12 @@ $('addJobForm').addEventListener('submit', function(e) {
 
 // === Inventory Functions ===
 function loadProducts() {
-  $('productList').innerHTML = '<div class="flex justify-center py-10"><div class="spinner"></div></div>';
-  callServer('getProducts', [], function(data) { productsData = data || []; renderProducts(); },
-    function(msg) { $('productList').innerHTML = errorBox(msg); });
+  var cached = lsGet('products');
+  if (cached && !productsData.length) productsData = cached;
+  if (productsData.length) renderProducts();
+  else $('productList').innerHTML = '<div class="flex justify-center py-10"><div class="spinner"></div></div>';
+  fetchData('getProducts', 'products', setProducts,
+    function(msg) { if (!productsData.length) $('productList').innerHTML = errorBox(msg); else alert('อัปเดตข้อมูลไม่สำเร็จ: ' + msg); });
 }
 
 function setFilter(f) {
@@ -1005,7 +1052,7 @@ function renderProducts() {
   $('productCount').textContent = list.length + ' / ' + productsData.length + ' รายการ';
   var html = '';
   list.forEach(function(p) {
-    var pid = esc(p.id);
+    var pid = jsq(p.id);
     var editBtn = '<button onclick="openEditProductModal(\'' + pid + '\')" class="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5">✏️ แก้ไข</button>';
     var action = p.sold ?
       '<div class="mt-2 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800"><b>ขายแล้ว:</b> ' + money(p.salePrice) + (p.saleDate ? ' (' + esc(p.saleDate) + ')' : '') +
@@ -1082,7 +1129,7 @@ function deleteProductHandler() {
   callServer('deleteProduct', [id], function(res) {
     btn.disabled = false;
     closeAddProductModal();
-    if (res && res.products) { productsData = res.products; renderProducts(); }
+    if (res && res.products) { setProducts(res.products); }
   }, function(msg) { btn.disabled = false; alert('ลบไม่สำเร็จ: ' + msg); });
 }
 
@@ -1108,7 +1155,7 @@ $('addProductForm').addEventListener('submit', function(e) {
     callServer(id ? 'updateProduct' : 'addProduct', [payload], function(res) {
       setBusy(btn, false, 'บันทึก');
       closeAddProductModal();
-      if (res && res.products) { productsData = res.products; renderProducts(); }
+      if (res && res.products) { setProducts(res.products); }
     }, function(msg) {
       setBusy(btn, false, 'บันทึก');
       alert('เกิดข้อผิดพลาด: ' + msg);
@@ -1134,19 +1181,26 @@ $('soldForm').addEventListener('submit', function(e) {
   callServer('markAsSold', [$('s_id').value, $('s_price').value, $('s_date').value], function(res) {
     setBusy(btn, false, 'บันทึก');
     closeSoldModal();
-    if (res && res.products) { productsData = res.products; renderProducts(); }
+    if (res && res.products) { setProducts(res.products); }
   }, function(msg) { setBusy(btn, false, 'บันทึก'); alert('เกิดข้อผิดพลาด: ' + msg); });
 });
 
 // === Dashboard & All Graphs ===
 function loadDashboard() {
-  callServer('getRevenueSummary', [], function(summary) {
+  var cached = lsGet('summary');
+  if (cached) renderSummary(cached);
+  fetchData('getRevenueSummary', 'summary', renderSummary);
+}
+
+function renderSummary(summary) {
+  if (!summary) return;
+  (function() {
     if ($('kpiNetProfit')) $('kpiNetProfit').textContent = money(summary.netProfit);
     if ($('kpiPetProfit')) $('kpiPetProfit').textContent = money(summary.totalPetProfit);
     if ($('kpiProductProfit')) $('kpiProductProfit').textContent = money(summary.totalProductProfit);
     if ($('kpiSoldCount')) $('kpiSoldCount').textContent = summary.soldCount + ' รายการ';
     renderAllDashboardCharts(summary.monthlyData);
-  });
+  })();
 }
 
 function createChart(canvasId, type, labels, datasets, isStacked) {
@@ -1190,11 +1244,9 @@ function renderAllDashboardCharts(monthlyData) {
 var pokerData = { results: [] };
 function loadPoker() {
   if ($('pkFilterDate') && !$('pkFilterDate').value) $('pkFilterDate').value = todayStr();
-  callServer('getPokerData', [], function(data) {
-    pokerData = data || { results: [] };
-    renderPokerDashboard();
-    renderPokerRawTable();
-  });
+  var cached = lsGet('poker');
+  if (cached) { pokerData = cached; renderPokerDashboard(); renderPokerRawTable(); }
+  fetchData('getPokerData', 'poker', setPoker);
 }
 
 function openAddPokerModal() {
@@ -1233,7 +1285,7 @@ function submitPokerBatch() {
   callServer('addPokerBatchResults', [payload], function(res) {
     setBusy(btn, false, 'บันทึกทั้งหมดลงชีต');
     closeAddPokerModal();
-    if (res && res.poker) { pokerData = res.poker; renderPokerDashboard(); renderPokerRawTable(); }
+    if (res && res.poker) { setPoker(res.poker); }
   }, function(msg) { setBusy(btn, false, 'บันทึกทั้งหมดลงชีต'); alert('เกิดข้อผิดพลาด: ' + msg); });
 }
 

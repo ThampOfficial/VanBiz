@@ -140,121 +140,113 @@ function parseDate_(v) {
   return null;
 }
 
-// 1. ฟังก์ชันสแกนโฟลเดอร์รูปหน้าปกสัตว์ (Animals Lover_Images)
-let cachedCoverMap = null;
-function getAnimalsLoverFileMap_() {
-  if (cachedCoverMap) return cachedCoverMap;
-  const fileIdMap = {};
-  const prefixMap = {};
-  
-  function scan_(folder) {
-    try {
-      const files = folder.getFiles();
-      while (files.hasNext()) {
-        const file = files.next();
-        const fName = file.getName().toLowerCase();
-        const fIdStr = file.getId();
-        fileIdMap[fName] = fIdStr;
-        
-        const dotIdx = fName.indexOf('.');
-        const prefix = dotIdx > 0 ? fName.substring(0, dotIdx).trim() : fName.trim();
-        if (prefix && !prefixMap[prefix]) {
-          prefixMap[prefix] = fIdStr;
-        }
-      }
-      const subFolders = folder.getFolders();
-      while (subFolders.hasNext()) {
-        scan_(subFolders.next());
-      }
-    } catch (e) {}
-  }
+// ============================================================
+//  แคช (CacheService) — ทำให้โหลดเร็ว ไม่ต้องสแกน Drive / อ่านชีตทุกครั้ง
+// ============================================================
+const CACHE_CHUNK_ = 90000;   // CacheService เก็บได้ไม่เกิน 100KB ต่อ key จึงแบ่งเป็นชิ้น
+const DATA_TTL_ = 600;        // ข้อมูลชีต: 10 นาที (กดรีเฟรชเพื่อดึงใหม่ทันที)
+const MAP_TTL_ = 21600;       // รายชื่อไฟล์รูปใน Drive: 6 ชั่วโมง
+const DATA_KEYS_ = ['pets', 'products', 'summary', 'poker', 'photos'];
 
-  if (CONFIG.ANIMALS_LOVER_FOLDER_ID) {
-    try {
-      scan_(DriveApp.getFolderById(CONFIG.ANIMALS_LOVER_FOLDER_ID));
-    } catch (e) {}
-  }
-
-  cachedCoverMap = { full: fileIdMap, prefix: prefixMap };
-  return cachedCoverMap;
+function cacheGetJson_(key) {
+  try {
+    const cache = CacheService.getScriptCache();
+    const meta = cache.get(key + ':n');
+    if (!meta) return null;
+    const n = parseInt(meta, 10);
+    const keys = [];
+    for (let i = 0; i < n; i++) keys.push(key + ':' + i);
+    const parts = cache.getAll(keys);
+    let str = '';
+    for (let i = 0; i < n; i++) {
+      const part = parts[key + ':' + i];
+      if (part === undefined || part === null) return null;
+      str += part;
+    }
+    return JSON.parse(str);
+  } catch (e) { return null; }
 }
 
-// 2. ฟังก์ชันสแกนโฟลเดอร์รูปเพิ่มเติมสัตว์ (AnimalPhotos_Images)
-let cachedExtraMap = null;
-function getAnimalPhotosFileMap_() {
-  if (cachedExtraMap) return cachedExtraMap;
-  const fileIdMap = {};
-  const prefixMap = {};
-
-  function scan_(folder) {
-    try {
-      const files = folder.getFiles();
-      while (files.hasNext()) {
-        const file = files.next();
-        const fName = file.getName().toLowerCase();
-        const fIdStr = file.getId();
-        fileIdMap[fName] = fIdStr;
-        
-        const dotIdx = fName.indexOf('.');
-        const prefix = dotIdx > 0 ? fName.substring(0, dotIdx).trim() : fName.trim();
-        if (prefix && !prefixMap[prefix]) {
-          prefixMap[prefix] = fIdStr;
-        }
-      }
-      const subFolders = folder.getFolders();
-      while (subFolders.hasNext()) {
-        scan_(subFolders.next());
-      }
-    } catch (e) {}
-  }
-
-  if (CONFIG.ANIMAL_PHOTOS_FOLDER_ID) {
-    try {
-      scan_(DriveApp.getFolderById(CONFIG.ANIMAL_PHOTOS_FOLDER_ID));
-    } catch (e) {}
-  }
-
-  cachedExtraMap = { full: fileIdMap, prefix: prefixMap };
-  return cachedExtraMap;
+function cachePutJson_(key, obj, ttl) {
+  try {
+    const str = JSON.stringify(obj);
+    const map = {};
+    let n = 0;
+    for (let i = 0; i < str.length; i += CACHE_CHUNK_) map[key + ':' + (n++)] = str.substring(i, i + CACHE_CHUNK_);
+    map[key + ':n'] = String(n);
+    CacheService.getScriptCache().putAll(map, ttl || DATA_TTL_);
+  } catch (e) {}
 }
 
-// 3. ฟังก์ชันสแกนโฟลเดอร์รูปสินค้า (Products_Images) โดยเฉพาะ
-let cachedProductsMap = null;
-function getProductsFileMap_() {
-  if (cachedProductsMap) return cachedProductsMap;
-  const fileIdMap = {};
-  const prefixMap = {};
+function cacheRemove_(keys) {
+  try { CacheService.getScriptCache().removeAll(keys.map(k => k + ':n')); } catch (e) {}
+}
 
+// ล้างแคชข้อมูลหลังมีการบันทึก (และล้างรายชื่อไฟล์ถ้าระบุ)
+function invalidate_(mapKeys) {
+  cacheRemove_(DATA_KEYS_.concat(mapKeys || []));
+  if (mapKeys) mapKeys.forEach(k => { delete folderMaps_[k]; });
+}
+
+function cached_(key, force, builder) {
+  if (!force) {
+    const hit = cacheGetJson_(key);
+    if (hit !== null) return hit;
+  }
+  const val = builder();
+  cachePutJson_(key, val, DATA_TTL_);
+  return val;
+}
+
+// รายชื่อไฟล์ในโฟลเดอร์รูป (รวมโฟลเดอร์ย่อย) → { full: {ชื่อไฟล์: id}, prefix: {ส่วนหน้าชื่อ: id} }
+const folderMaps_ = {};
+let mapMissed_ = false;
+function getFolderMap_(key, folderId, fresh) {
+  if (!fresh && folderMaps_[key]) return folderMaps_[key];
+  if (!fresh) {
+    const hit = cacheGetJson_(key);
+    if (hit) { hit.fromCache = true; folderMaps_[key] = hit; return hit; }
+  }
+  const full = {}, prefix = {};
   function scan_(folder) {
     try {
       const files = folder.getFiles();
       while (files.hasNext()) {
         const file = files.next();
         const fName = file.getName().toLowerCase();
-        const fIdStr = file.getId();
-        fileIdMap[fName] = fIdStr;
-        
+        const fId = file.getId();
+        full[fName] = fId;
         const dotIdx = fName.indexOf('.');
-        const prefix = dotIdx > 0 ? fName.substring(0, dotIdx).trim() : fName.trim();
-        if (prefix && !prefixMap[prefix]) {
-          prefixMap[prefix] = fIdStr;
-        }
+        const pre = dotIdx > 0 ? fName.substring(0, dotIdx).trim() : fName.trim();
+        if (pre && !prefix[pre]) prefix[pre] = fId;
       }
-      const subFolders = folder.getFolders();
-      while (subFolders.hasNext()) {
-        scan_(subFolders.next());
-      }
+      const subs = folder.getFolders();
+      while (subs.hasNext()) scan_(subs.next());
     } catch (e) {}
   }
+  if (folderId) { try { scan_(DriveApp.getFolderById(folderId)); } catch (e) {} }
+  const map = { full: full, prefix: prefix };
+  cachePutJson_(key, map, MAP_TTL_);
+  folderMaps_[key] = map;
+  return map;
+}
 
-  if (CONFIG.PRODUCTS_FOLDER_ID) {
-    try {
-      scan_(DriveApp.getFolderById(CONFIG.PRODUCTS_FOLDER_ID));
-    } catch (e) {}
+function getAnimalsLoverFileMap_(fresh) { return getFolderMap_('fm_cover', CONFIG.ANIMALS_LOVER_FOLDER_ID, fresh); }
+function getAnimalPhotosFileMap_(fresh) { return getFolderMap_('fm_extra', CONFIG.ANIMAL_PHOTOS_FOLDER_ID, fresh); }
+function getProductsFileMap_(fresh) { return getFolderMap_('fm_products', CONFIG.PRODUCTS_FOLDER_ID, fresh); }
+
+// ถ้ารูปบางรูปหาไม่เจอในรายชื่อที่แคชไว้ (เช่นเพิ่งอัปโหลดผ่าน AppSheet) ให้สแกนโฟลเดอร์ใหม่หนึ่งครั้งแล้วคำนวณใหม่
+function withFreshMapOnMiss_(mapKey, build) {
+  mapMissed_ = false;
+  let out = build();
+  const m = folderMaps_[mapKey];
+  if (mapMissed_ && m && m.fromCache) {
+    delete folderMaps_[mapKey];
+    cacheRemove_([mapKey]);
+    mapMissed_ = false;
+    out = build();
   }
-
-  cachedProductsMap = { full: fileIdMap, prefix: prefixMap };
-  return cachedProductsMap;
+  return out;
 }
 
 function resolveCoverPhotoUrl_(rawPath, mapObj, id) {
@@ -271,6 +263,7 @@ function resolveCoverPhotoUrl_(rawPath, mapObj, id) {
     if (cleanId && prefixMap[cleanId]) fileId = prefixMap[cleanId];
   }
 
+  if (!fileId && rawPath && !extractDriveId_(rawPath)) mapMissed_ = true;
   return fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : '';
 }
 
@@ -290,6 +283,7 @@ function getAnimalPhotosMap_() {
     const rawPhotoPath = toText_(r[2]);
     if (animalId && rawPhotoPath) {
       const fileId = fileIdFromPath_(rawPhotoPath, fileMap);
+      if (!fileId) mapMissed_ = true;
       if (fileId) {
         const url = 'https://lh3.googleusercontent.com/d/' + fileId;
         if (!map[animalId]) map[animalId] = [];
@@ -365,7 +359,11 @@ function getJobNetTotal_(r) {
 }
 
 // === Pet Sitter Data API ===
-function getPetSitterData() {
+function getPetSitterData(force) {
+  return cached_('pets', force, () => withFreshMapOnMiss_('fm_cover', getPetSitterData_));
+}
+
+function getPetSitterData_() {
   const ss = ss_();
   let sh = ss.getSheetByName(CONFIG.SHEETS.PETS) || ss.getSheetByName('Animals');
   if (!sh) return [];
@@ -373,7 +371,6 @@ function getPetSitterData() {
   if (lastRow < 2) return [];
   const values = sh.getRange(2, 1, lastRow - 1, 8).getValues();
   
-  cachedCoverMap = null;
   const fileMap = getAnimalsLoverFileMap_();
   const petStats = getPetStatsFromJobs_();
   const careLogMap = getCareLogFullMap_();
@@ -475,6 +472,7 @@ function updateAnimal(data) {
     }
     savePetCareLog_(data);
     SpreadsheetApp.flush();
+    invalidate_();
     return { ok: true, pets: getPetSitterData() };
   });
 }
@@ -544,12 +542,13 @@ function addAnimal(data) {
     data.id = id;
     savePetCareLog_(data);
     SpreadsheetApp.flush();
+    invalidate_();
     return { ok: true, pets: getPetSitterData() };
   });
 }
 
 function getPetExtraPhotos(petId) {
-  const animalPhotosMap = getAnimalPhotosMap_();
+  const animalPhotosMap = cached_('photos', false, () => withFreshMapOnMiss_('fm_extra', getAnimalPhotosMap_));
   if (!petId) return [];
   return animalPhotosMap[String(petId).toLowerCase()] || [];
 }
@@ -565,8 +564,8 @@ function uploadExtraPhoto(data) {
     saveImageToFolder_(data.image, CONFIG.ANIMAL_PHOTOS_FOLDER_ID, photoName);
     sh.appendRow([photoId, data.petId, 'AnimalPhotos_Images/' + photoName]);
     SpreadsheetApp.flush();
+    invalidate_();
   });
-  cachedExtraMap = null;
   return { ok: true, photos: getPetExtraPhotos(data.petId) };
 }
 
@@ -623,11 +622,16 @@ function saveJob(data) {
       sh.appendRow([newId_(sh), data.petId, data.serviceType || 'Dropin Visit', 1, data.startDate, endDate, price, tip, pickup, cost, '', data.note || '']);
     }
     SpreadsheetApp.flush();
+    invalidate_();
   });
   return { ok: true, jobs: getPetJobs(data.petId), pets: getPetSitterData() };
 }
 
-function getProducts() {
+function getProducts(force) {
+  return cached_('products', force, () => withFreshMapOnMiss_('fm_products', getProducts_));
+}
+
+function getProducts_() {
   const ss = ss_();
   const sh = ss.getSheetByName(CONFIG.SHEETS.PRODUCTS);
   if (!sh) return [];
@@ -665,6 +669,7 @@ function addProduct(data) {
       sold ? (data.saleDate || fmtDate_(new Date())) : '', sold ? toNumber_(data.salePrice) : '', data.note || ''
     ]);
     SpreadsheetApp.flush();
+    invalidate_();
   });
   return { ok: true, products: getProducts() };
 }
@@ -684,6 +689,7 @@ function updateProduct(data) {
     sh.getRange(row, 10).setValue(data.note || '');
     if (data.image && data.image.base64) sh.getRange(row, 3).setValue(uploadProductImage_(data.image, data.id));
     SpreadsheetApp.flush();
+    invalidate_();
   });
   return { ok: true, products: getProducts() };
 }
@@ -695,6 +701,7 @@ function markAsSold(id, salePrice, saleDate) {
     if (!row) throw new Error('ไม่พบสินค้า ID: ' + id);
     sh.getRange(row, 8, 1, 2).setValues([[saleDate || fmtDate_(new Date()), toNumber_(salePrice)]]);
     SpreadsheetApp.flush();
+    invalidate_();
   });
   return { ok: true, products: getProducts() };
 }
@@ -706,12 +713,17 @@ function deleteProduct(id) {
     if (!row) throw new Error('ไม่พบสินค้า ID: ' + id);
     sh.deleteRow(row);
     SpreadsheetApp.flush();
+    invalidate_();
   });
   return { ok: true, products: getProducts() };
 }
 
-function getRevenueSummary() {
-  const products = getProducts();
+function getRevenueSummary(force) {
+  return cached_('summary', force, () => getRevenueSummary_(force));
+}
+
+function getRevenueSummary_(force) {
+  const products = getProducts(force);
   let totalProductProfit = 0, totalPetProfit = 0, totalCost = 0, soldCount = 0;
   const monthlyData = {};
 
@@ -785,7 +797,11 @@ function getPokerSheet_() {
   return sh;
 }
 
-function getPokerData() {
+function getPokerData(force) {
+  return cached_('poker', force, getPokerData_);
+}
+
+function getPokerData_() {
   const sh = getPokerSheet_();
   const lastRow = sh.getLastRow();
   const results = [];
@@ -824,6 +840,7 @@ function addPokerBatchResults(payload) {
     });
     if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, 7).setValues(rows);
     SpreadsheetApp.flush();
+    invalidate_();
   });
   return { ok: true, poker: getPokerData() };
 }
@@ -832,7 +849,6 @@ function addPokerBatchResults(payload) {
 function uploadProductImage_(image, productId) {
   const fileName = productId + '.Picture.' + Date.now() + '.' + fileExt_(image.fileName, image.mimeType);
   const file = saveImageToFolder_(image, CONFIG.PRODUCTS_FOLDER_ID, fileName);
-  cachedProductsMap = null;
   return 'https://lh3.googleusercontent.com/d/' + file.getId();
 }
 
