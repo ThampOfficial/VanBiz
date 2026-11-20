@@ -22,7 +22,10 @@
   <header class="bg-indigo-600 text-white sticky top-0 z-30 shadow">
     <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
       <h1 class="text-lg font-bold">🐾 Pet Sitter, Inventory & Poker</h1>
-      <button onclick="refreshData()" class="text-sm bg-white/20 hover:bg-white/30 rounded-full px-3 py-1">รีเฟรช</button>
+      <div class="flex items-center gap-2">
+        <button id="keyBtn" onclick="showLogin()" title="รหัสเข้าใช้ / ลิงก์ Apps Script" class="hidden text-sm bg-white/20 hover:bg-white/30 rounded-full px-2.5 py-1">🔑</button>
+        <button onclick="refreshData()" class="text-sm bg-white/20 hover:bg-white/30 rounded-full px-3 py-1">รีเฟรช</button>
+      </div>
     </div>
     <div class="max-w-4xl mx-auto px-4 flex border-t border-indigo-500/40 text-xs sm:text-sm">
       <button id="tab-pets" onclick="switchTab('pets')" class="flex-1 py-2.5 text-center font-semibold border-b-2 border-white text-white">🐱 Pet Sitter</button>
@@ -511,6 +514,11 @@
       <h3 class="text-lg font-bold">🔐 เข้าใช้ VanBiz</h3>
       <p class="text-xs text-slate-500">ใส่รหัสเข้าใช้ (API_KEY) ครั้งเดียว เครื่องนี้จะจำไว้</p>
       <input type="password" id="loginKey" autocomplete="current-password" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="รหัสเข้าใช้">
+      <details class="text-xs text-slate-500">
+        <summary class="cursor-pointer">ลิงก์ Apps Script (/exec)</summary>
+        <input type="url" id="loginUrl" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-[11px]" placeholder="https://script.google.com/macros/s/.../exec">
+        <p class="mt-1">ใช้ลิงก์ Web app จาก Deploy → Manage deployments</p>
+      </details>
       <p id="loginMsg" class="text-xs text-red-600"></p>
       <button type="submit" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 text-sm">เข้าใช้</button>
     </form>
@@ -530,7 +538,10 @@ function money(n) { var v = Number(n || 0); return (v < 0 ? '-$' : '$') + Math.a
 function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
 // ลิงก์ Apps Script (/exec) ที่ต่อกับชีต Van BIz — ใช้ตอนเปิดจาก GitHub Pages
-var API_URL = 'https://script.google.com/macros/s/AKfycbzDEw5Mm1EoixwNzczcLwwkKGy_xqP6X1QbmqqXN3dXmKltbyrw3_MhyyK47LwFQyusfA/exec';
+var DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzDEw5Mm1EoixwNzczcLwwkKGy_xqP6X1QbmqqXN3dXmKltbyrw3_MhyyK47LwFQyusfA/exec';
+var URL_STORE = 'vanbiz_api_url';
+function getApiUrl() { try { return localStorage.getItem(URL_STORE) || DEFAULT_API_URL; } catch (e) { return window._vbUrl || DEFAULT_API_URL; } }
+function setApiUrl(u) { try { if (u && u !== DEFAULT_API_URL) localStorage.setItem(URL_STORE, u); else localStorage.removeItem(URL_STORE); } catch (e) { window._vbUrl = u; } }
 var IN_APPS_SCRIPT = !!(window.google && google.script && google.script.run);
 var KEY_STORE = 'vanbiz_api_key';
 
@@ -540,14 +551,19 @@ function setApiKey(k) { try { localStorage.setItem(KEY_STORE, k); } catch (e) { 
 var pendingAfterLogin = [];
 function showLogin(msg) {
   $('loginMsg').textContent = msg || '';
+  $('loginUrl').value = getApiUrl();
+  if (!$('loginKey').value) $('loginKey').value = getApiKey();
   $('loginModal').classList.remove('hidden');
   setTimeout(function() { $('loginKey').focus(); }, 50);
 }
 function submitLogin(e) {
   if (e) e.preventDefault();
   var k = $('loginKey').value.trim();
+  var u = $('loginUrl').value.trim();
   if (!k) return;
+  if (u && !/^https:\/\/script\.google\.com\/macros\/s\/[^\/]+\/exec$/.test(u)) { $('loginMsg').textContent = 'ลิงก์ต้องเป็นแบบ https://script.google.com/macros/s/.../exec'; return; }
   setApiKey(k);
+  setApiUrl(u);
   $('loginModal').classList.add('hidden');
   var q = pendingAfterLogin; pendingAfterLogin = [];
   if (q.length) q.forEach(function(f) { f(); }); else refreshData();
@@ -561,7 +577,7 @@ function callServer(fnName, args, onOk, onFail) {
   if (!IN_APPS_SCRIPT) {
     var key = getApiKey();
     if (!key) { pendingAfterLogin.push(function() { callServer(fnName, args, onOk, onFail); }); showLogin(); return; }
-    fetch(API_URL, {
+    fetch(getApiUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // text/plain = ไม่มี CORS preflight
       body: JSON.stringify({ action: fnName, args: args || [], key: key })
@@ -579,7 +595,13 @@ function callServer(fnName, args, onOk, onFail) {
         }
         fail(res.error);
       })
-      .catch(function(err) { fail(err && err.message ? err.message : String(err)); });
+      .catch(function(err) {
+        var m = err && err.message ? err.message : String(err);
+        if (/failed to fetch|networkerror|load failed/i.test(m)) {
+          m = 'ต่อ Apps Script ไม่ได้ — ตรวจใน Deploy → Manage deployments ว่า Execute as = Me, Who has access = Anyone และลิงก์ /exec ตรงกับที่ตั้งไว้ (กด 🔑 มุมขวาบนเพื่อแก้ลิงก์)';
+        }
+        fail(m);
+      });
     return;
   }
   var runner = google.script.run
@@ -1288,7 +1310,10 @@ if (petSearchBoxEl) petSearchBoxEl.addEventListener('input', renderPets);
 var searchBoxEl = $('searchBox');
 if (searchBoxEl) searchBoxEl.addEventListener('input', renderProducts);
 
-window.addEventListener('DOMContentLoaded', function() { loadPetData(); });
+window.addEventListener('DOMContentLoaded', function() {
+  if (!IN_APPS_SCRIPT) $('keyBtn').classList.remove('hidden');
+  loadPetData();
+});
 </script>
 </body>
 </html>
