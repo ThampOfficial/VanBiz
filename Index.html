@@ -286,6 +286,10 @@
             <div><label class="block text-[11px] text-slate-600 mb-1">Vet / Emergency</label><input type="text" id="cl_vetEmergency" placeholder="VCA Clinic" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
             <div><label class="block text-[11px] text-slate-600 mb-1">Key Return</label><input type="text" id="cl_keyReturn" placeholder="Lockbox 1234" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
           </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[11px] text-slate-600 mb-1">Door / Balcony / Window</label><input type="text" id="cl_doorBalconyWindow" placeholder="Keep balcony closed" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+            <div><label class="block text-[11px] text-slate-600 mb-1">Hiding place</label><input type="text" id="cl_hidingPlace" placeholder="Under the bed" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+          </div>
           <div><label class="block text-[11px] text-slate-600 mb-1">Special Instruction</label><textarea id="cl_specialInstruction" rows="1" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></textarea></div>
           <div><label class="block text-[11px] text-slate-600 mb-1">Notes</label><textarea id="cl_notes" rows="1" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></textarea></div>
         </div>
@@ -372,6 +376,10 @@
             <input type="date" id="j_endDate" required class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs">
           </div>
         </div>
+        <div>
+          <label class="block text-[11px] font-medium mb-1">โน้ต</label>
+          <input type="text" id="j_note" class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs">
+        </div>
 
         <button type="submit" id="j_submitBtn" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 text-xs shadow mt-1">
           + บันทึก Job ใหม่
@@ -397,7 +405,14 @@
       <form id="addProductForm" class="space-y-3" autocomplete="off">
         <input type="hidden" id="a_id">
         <div><label class="block text-sm font-medium mb-1">ชื่อสินค้า <span class="text-red-500">*</span></label><input type="text" id="a_name" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
-        <div><label class="block text-sm font-medium mb-1">รูปภาพสินค้า</label><input type="file" id="a_file" accept="image/*" class="w-full text-xs"></div>
+        <div>
+          <label class="block text-sm font-medium mb-1">รูปภาพสินค้า</label>
+          <div class="flex items-center gap-3">
+            <div id="a_preview" class="h-16 w-16 rounded-xl bg-slate-100 shrink-0 flex items-center justify-center text-xl overflow-hidden">📦</div>
+            <input type="file" id="a_file" accept="image/*" onchange="previewFile(this, 'a_preview')" class="w-full text-xs">
+          </div>
+          <p id="a_fileHint" class="hidden text-[11px] text-slate-500 mt-1">เลือกรูปใหม่เฉพาะเมื่อต้องการเปลี่ยนรูป</p>
+        </div>
         <div class="grid grid-cols-2 gap-2">
           <div><label class="block text-sm font-medium mb-1">วันที่ซื้อ</label><input type="date" id="a_startDate" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
           <div><label class="block text-sm font-medium mb-1">ต้นทุน (CAD)</label><input type="number" id="a_cost" min="0" step="0.01" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
@@ -406,10 +421,24 @@
           <div><label class="block text-sm font-medium mb-1">วันที่ลงขาย</label><input type="date" id="a_postDate" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
           <div><label class="block text-sm font-medium mb-1">ราคาตั้งขาย (CAD)</label><input type="number" id="a_postPrice" min="0" step="0.01" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
         </div>
+        <div><label class="block text-sm font-medium mb-1">โน้ต</label><input type="text" id="a_note" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+          <label class="flex items-center gap-2 text-sm font-semibold text-emerald-800 cursor-pointer">
+            <input type="checkbox" id="a_sold" onchange="toggleSoldFields()" class="h-4 w-4 accent-emerald-600"> ขายแล้ว
+          </label>
+          <div id="a_soldFields" class="hidden grid grid-cols-2 gap-2">
+            <div><label class="block text-xs font-medium mb-1">วันที่ขาย</label><input type="date" id="a_saleDate" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+            <div><label class="block text-xs font-medium mb-1">ราคาขายจริง (CAD)</label><input type="number" id="a_salePrice" min="0" step="0.01" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+          </div>
+          <p class="text-[11px] text-slate-500">เอาติ๊กออก = เปลี่ยนกลับเป็น "ยังไม่ขาย" (ล้างวันที่และราคาขาย)</p>
+        </div>
+
         <div class="flex gap-2 pt-3">
           <button type="button" onclick="closeAddProductModal()" class="flex-1 rounded-xl bg-slate-200 py-2.5 text-sm">ยกเลิก</button>
           <button type="submit" id="a_submitBtn" class="flex-1 rounded-xl bg-indigo-600 text-white py-2.5 text-sm">บันทึก</button>
         </div>
+        <button type="button" id="a_deleteBtn" onclick="deleteProductHandler()" class="hidden w-full text-xs text-red-600 font-semibold py-1.5 hover:underline">🗑️ ลบสินค้านี้</button>
       </form>
     </div>
   </div>
@@ -489,6 +518,60 @@ function esc(s) { return s == null ? '' : String(s).replace(/&/g, '&amp;').repla
 function money(n) { var v = Number(n || 0); return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' CAD'; }
 function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
+// เรียกฟังก์ชันฝั่ง Apps Script พร้อมจัดการ error ทุกครั้ง (ไม่ให้หมุนค้าง)
+function callServer(fnName, args, onOk, onFail) {
+  var runner = google.script.run
+    .withSuccessHandler(function(res) { if (onOk) onOk(res); })
+    .withFailureHandler(function(err) {
+      var msg = (err && err.message) ? err.message : String(err);
+      if (onFail) onFail(msg); else alert('เกิดข้อผิดพลาด: ' + msg);
+    });
+  runner[fnName].apply(runner, args || []);
+}
+
+function setBusy(btn, busy, label) {
+  if (!btn) return;
+  if (busy) { btn.dataset.label = btn.textContent; btn.disabled = true; btn.textContent = 'กำลังบันทึก...'; btn.classList.add('opacity-60'); }
+  else { btn.disabled = false; btn.textContent = label || btn.dataset.label || btn.textContent; btn.classList.remove('opacity-60'); }
+}
+
+function errorBox(msg) {
+  return '<div class="text-center text-sm text-red-600 py-6 bg-red-50 rounded-2xl border border-red-200">โหลดข้อมูลไม่สำเร็จ: ' + esc(msg) +
+    '<br><button onclick="refreshData()" class="mt-2 text-xs font-semibold underline">ลองใหม่</button></div>';
+}
+
+// อ่านรูปและย่อขนาด (ด้านยาวสุด 1600px, JPEG) ให้อัปโหลดเร็วและไม่เกินขนาดที่ Apps Script รับได้
+function readImage(file, cb) {
+  if (!file) return cb(null);
+  var reader = new FileReader();
+  reader.onerror = function() { alert('อ่านไฟล์รูปไม่ได้'); cb(null); };
+  reader.onload = function(evt) {
+    var dataUrl = evt.target.result;
+    var img = new Image();
+    img.onload = function() {
+      var max = 1600, w = img.width, h = img.height;
+      var scale = Math.min(1, max / Math.max(w, h));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      var out = canvas.toDataURL('image/jpeg', 0.85);
+      cb({ base64: out.split(',')[1], mimeType: 'image/jpeg', fileName: (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg' });
+    };
+    img.onerror = function() { cb({ base64: dataUrl.split(',')[1], mimeType: file.type || 'image/jpeg', fileName: file.name }); };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+}
+
+function previewFile(input, previewId) {
+  var box = $(previewId);
+  if (!box || !input.files || !input.files[0]) return;
+  var url = URL.createObjectURL(input.files[0]);
+  box.innerHTML = '<img src="' + url + '" class="h-full w-full object-cover">';
+}
+
+function findPet(id) { return petsData.find(function(x) { return String(x.id) === String(id); }); }
+
 function renderImage(url) {
   if (url && typeof url === 'string' && url.indexOf('http') === 0) {
     var fileId = '';
@@ -530,7 +613,8 @@ function refreshData() {
 // === Pet Sitter Functions ===
 function loadPetData() {
   if ($('petList')) $('petList').innerHTML = '<div class="flex justify-center py-10"><div class="spinner"></div></div>';
-  google.script.run.withSuccessHandler(function(data) { petsData = data || []; renderPets(); }).getPetSitterData();
+  callServer('getPetSitterData', [], function(data) { petsData = data || []; renderPets(); },
+    function(msg) { if ($('petList')) $('petList').innerHTML = errorBox(msg); });
 }
 
 function setPetFilter(cat) {
@@ -597,7 +681,7 @@ function renderPets() {
         renderImage(p.image) +
         '<div class="min-w-0 flex-1">' +
           '<div class="flex justify-between items-start pr-12">' +
-            '<div class="font-bold text-sm leading-tight text-slate-800 cursor-pointer" onclick="openJobsModal(\'' + esc(p.id) + '\', \'' + esc(p.name) + '\', \'' + esc(p.owner) + '\')">' + esc(p.name) + '</div>' +
+            '<div class="font-bold text-sm leading-tight text-slate-800 cursor-pointer" onclick="openJobsModal(\'' + esc(p.id) + '\')">' + esc(p.name) + '</div>' +
             '<span class="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-semibold border border-indigo-100">' + esc(p.category || 'Pet') + '</span>' +
           '</div>' +
           '<button onclick="openEditAnimalModal(\'' + esc(p.id) + '\')" class="absolute top-3 right-3 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2 py-1 rounded-lg transition-colors">✏️ แก้ไข</button>' +
@@ -606,237 +690,164 @@ function renderPets() {
           newestJobText +
           (p.location ? '<div class="text-xs text-slate-500 mt-1">📍 ที่อยู่: ' + esc(p.location) + (p.room ? ' (' + esc(p.room) + ')' : '') + '</div>' : '') +
           (p.note ? '<div class="text-xs bg-slate-50 p-2 rounded-xl border border-slate-100 text-slate-600 mt-2 whitespace-pre-line">📋 <b>รายละเอียดการดูแล:</b>\n' + esc(p.note) + '</div>' : '') +
-          '<button onclick="openJobsModal(\'' + esc(p.id) + '\', \'' + esc(p.name) + '\', \'' + esc(p.owner) + '\')" class="mt-2 w-full text-center py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl">📅 ดู Jobs & รูปภาพเพิ่มเติม</button>' +
+          '<button onclick="openJobsModal(\'' + esc(p.id) + '\')" class="mt-2 w-full text-center py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl">📅 ดู Jobs & รูปภาพเพิ่มเติม</button>' +
         '</div>' +
       '</div>';
   }
   if ($('petList')) $('petList').innerHTML = html;
 }
 
+var CARE_FIELDS = ['timeOfDay', 'visitDates', 'wetFood', 'wetFoodBrand', 'dryFood', 'water', 'treat', 'avoidFood',
+  'litterLocation', 'litterTrashBin', 'cleaningSupply', 'medication', 'vetEmergency', 'keyReturn',
+  'doorBalconyWindow', 'hidingPlace', 'specialInstruction', 'notes'];
+
 function openAddAnimalModal() {
   var form = $('addAnimalForm');
   if (form) form.reset();
-  if ($('an_id')) $('an_id').value = '';
-  if ($('cl_logId')) $('cl_logId').value = '';
-  if ($('animalModalTitle')) $('animalModalTitle').textContent = '🐾 เพิ่มข้อมูลสัตว์เลี้ยงใหม่';
-  if ($('addAnimalModal')) $('addAnimalModal').classList.remove('hidden');
+  $('an_id').value = '';
+  $('cl_logId').value = '';
+  $('animalModalTitle').textContent = '🐾 เพิ่มข้อมูลสัตว์เลี้ยงใหม่';
+  $('addAnimalModal').classList.remove('hidden');
 }
 
 function openEditAnimalModal(id) {
-  var p = petsData.find(function(x) { return String(x.id) === String(id); });
+  var p = findPet(id);
   if (!p) return;
-  
-  if ($('an_id')) $('an_id').value = p.id || '';
-  if ($('an_name')) $('an_name').value = p.name || '';
-  if ($('an_category')) $('an_category').value = p.category || '';
-  if ($('an_owner')) $('an_owner').value = p.owner || '';
-  if ($('an_location')) $('an_location').value = p.location || '';
-  if ($('an_room')) $('an_room').value = p.room || '';
-
+  var form = $('addAnimalForm');
+  if (form) form.reset();
   var c = p.careDetail || {};
-  if ($('cl_logId')) $('cl_logId').value = c.logId || '';
-  if ($('cl_timeOfDay')) $('cl_timeOfDay').value = c.timeOfDay || '';
-  if ($('cl_visitDates')) $('cl_visitDates').value = c.visitDates || '';
-  if ($('cl_wetFood')) $('cl_wetFood').value = c.wetFood || '';
-  if ($('cl_wetFoodBrand')) $('cl_wetFoodBrand').value = c.wetFoodBrand || '';
-  if ($('cl_dryFood')) $('cl_dryFood').value = c.dryFood || '';
-  if ($('cl_water')) $('cl_water').value = c.water || '';
-  if ($('cl_treat')) $('cl_treat').value = c.treat || '';
-  if ($('cl_avoidFood')) $('cl_avoidFood').value = c.avoidFood || '';
-  if ($('cl_litterLocation')) $('cl_litterLocation').value = c.litterLocation || '';
-  if ($('cl_litterTrashBin')) $('cl_litterTrashBin').value = c.litterTrashBin || '';
-  if ($('cl_cleaningSupply')) $('cl_cleaningSupply').value = c.cleaningSupply || '';
-  if ($('cl_medication')) $('cl_medication').value = c.medication || '';
-  if ($('cl_vetEmergency')) $('cl_vetEmergency').value = c.vetEmergency || '';
-  if ($('cl_keyReturn')) $('cl_keyReturn').value = c.keyReturn || '';
-  if ($('cl_doorBalconyWindow')) $('cl_doorBalconyWindow').value = c.doorBalconyWindow || '';
-  if ($('cl_hidingPlace')) $('cl_hidingPlace').value = c.hidingPlace || '';
-  if ($('cl_specialInstruction')) $('cl_specialInstruction').value = c.specialInstruction || '';
-  if ($('cl_notes')) $('cl_notes').value = c.notes || '';
-
-  if ($('animalModalTitle')) $('animalModalTitle').textContent = '✏️ แก้ไขข้อมูลสัตว์เลี้ยง & PetCareLog';
-  if ($('addAnimalModal')) $('addAnimalModal').classList.remove('hidden');
+  $('an_id').value = p.id || '';
+  $('an_name').value = p.name || '';
+  $('an_category').value = p.category || '';
+  $('an_owner').value = p.owner || '';
+  $('an_location').value = p.location || '';
+  $('an_room').value = p.room || c.addressUnit || '';
+  $('cl_logId').value = c.logId || '';
+  CARE_FIELDS.forEach(function(k) { var el = $('cl_' + k); if (el) el.value = c[k] || ''; });
+  $('animalModalTitle').textContent = '✏️ แก้ไขข้อมูลสัตว์เลี้ยง & PetCareLog';
+  $('addAnimalModal').classList.remove('hidden');
 }
 
-function closeAddAnimalModal() { if ($('addAnimalModal')) $('addAnimalModal').classList.add('hidden'); }
+function closeAddAnimalModal() { $('addAnimalModal').classList.add('hidden'); }
 
-var addAnimalFormEl = $('addAnimalForm');
-if (addAnimalFormEl) {
-  addAnimalFormEl.addEventListener('submit', function(e) {
-    e.preventDefault();
-    var name = $('an_name').value.trim();
-    if (!name) return alert('กรุณากรอกชื่อสัตว์เลี้ยง');
+$('addAnimalForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var name = $('an_name').value.trim();
+  if (!name) return alert('กรุณากรอกชื่อสัตว์เลี้ยง');
+  var btn = $('an_submitBtn');
+  setBusy(btn, true);
 
-    var btn = $('an_submitBtn');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'กำลังบันทึก...';
-    }
+  var petId = $('an_id').value;
+  var careDetail = { logId: $('cl_logId').value };
+  CARE_FIELDS.forEach(function(k) { var el = $('cl_' + k); if (el) careDetail[k] = el.value.trim(); });
 
-    var fileInput = $('an_file');
-    var petId = $('an_id').value;
+  var payload = {
+    id: petId, name: name,
+    category: $('an_category').value.trim(), owner: $('an_owner').value.trim(),
+    location: $('an_location').value.trim(), room: $('an_room').value.trim(),
+    careDetail: careDetail, image: null
+  };
 
-    var careDetailPayload = {
-      logId: $('cl_logId') ? $('cl_logId').value : '',
-      timeOfDay: $('cl_timeOfDay') ? $('cl_timeOfDay').value : '',
-      visitDates: $('cl_visitDates') ? $('cl_visitDates').value : '',
-      wetFood: $('cl_wetFood') ? $('cl_wetFood').value : '',
-      wetFoodBrand: $('cl_wetFoodBrand') ? $('cl_wetFoodBrand').value : '',
-      dryFood: $('cl_dryFood') ? $('cl_dryFood').value : '',
-      water: $('cl_water') ? $('cl_water').value : '',
-      treat: $('cl_treat') ? $('cl_treat').value : '',
-      avoidFood: $('cl_avoidFood') ? $('cl_avoidFood').value : '',
-      litterLocation: $('cl_litterLocation') ? $('cl_litterLocation').value : '',
-      litterTrashBin: $('cl_litterTrashBin') ? $('cl_litterTrashBin').value : '',
-      cleaningSupply: $('cl_cleaningSupply') ? $('cl_cleaningSupply').value : '',
-      medication: $('cl_medication') ? $('cl_medication').value : '',
-      vetEmergency: $('cl_vetEmergency') ? $('cl_vetEmergency').value : '',
-      keyReturn: $('cl_keyReturn') ? $('cl_keyReturn').value : '',
-      doorBalconyWindow: $('cl_doorBalconyWindow') ? $('cl_doorBalconyWindow').value : '',
-      hidingPlace: $('cl_hidingPlace') ? $('cl_hidingPlace').value : '',
-      specialInstruction: $('cl_specialInstruction') ? $('cl_specialInstruction').value : '',
-      notes: $('cl_notes') ? $('cl_notes').value : ''
-    };
+  var fileInput = $('an_file');
+  readImage(fileInput.files && fileInput.files[0], function(img) {
+    payload.image = img;
+    callServer(petId ? 'updateAnimal' : 'addAnimal', [payload], function(res) {
+      setBusy(btn, false, 'บันทึกข้อมูล');
+      closeAddAnimalModal();
+      if (res && res.pets) { petsData = res.pets; renderPets(); }
+    }, function(msg) {
+      setBusy(btn, false, 'บันทึกข้อมูล');
+      alert('เกิดข้อผิดพลาด: ' + msg);
+    });
+  });
+});
 
-    var payload = {
-      id: petId,
-      name: name,
-      category: $('an_category') ? $('an_category').value : '',
-      owner: $('an_owner') ? $('an_owner').value : '',
-      location: $('an_location') ? $('an_location').value : '',
-      room: $('an_room') ? $('an_room').value : '',
-      careDetail: careDetailPayload,
-      image: null
-    };
+function openJobsModal(petId) {
+  var p = findPet(petId) || {};
+  $('j_petId').value = petId;
+  $('jobModalPetName').textContent = '📅 Jobs & รูปภาพ: ' + (p.name || '');
+  $('jobModalPetDetail').textContent = 'เจ้าของ: ' + (p.owner || '-');
+  currentJobsCache = [];
+  resetJobForm();
+  $('photoGallery').innerHTML = '<div class="text-xs text-slate-400 py-2">กำลังโหลดรูปภาพ...</div>';
+  $('jobsList').innerHTML = '<div class="flex justify-center py-4"><div class="spinner"></div></div>';
+  $('jobsModal').classList.remove('hidden');
 
-    var submitToServer = function(dataPayload) {
-      var fn = petId ? 'updateAnimal' : 'addAnimal';
-      google.script.run
-        .withSuccessHandler(function(res) {
-          if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'บันทึกข้อมูล';
-          }
-          closeAddAnimalModal();
-          if (res && res.pets) {
-            petsData = res.pets;
-            renderPets();
-          }
-        })
-        .withFailureHandler(function(err) {
-          if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'บันทึกข้อมูล';
-          }
-          alert('เกิดข้อผิดพลาด: ' + (err.message || String(err)));
-        })[fn](dataPayload);
-    };
+  callServer('getPetExtraPhotos', [petId], renderPhotos,
+    function(msg) { $('photoGallery').innerHTML = '<div class="text-xs text-red-500 py-2">โหลดรูปไม่สำเร็จ: ' + esc(msg) + '</div>'; });
+  callServer('getPetJobs', [petId], function(jobs) { currentJobsCache = jobs || []; renderJobs(currentJobsCache); },
+    function(msg) { $('jobsList').innerHTML = '<div class="text-xs text-red-500 py-2">โหลด Jobs ไม่สำเร็จ: ' + esc(msg) + '</div>'; });
+}
 
-    if (fileInput && fileInput.files && fileInput.files[0]) {
-      var file = fileInput.files[0];
-      var reader = new FileReader();
-      reader.onload = function(evt) {
-        payload.image = { base64: evt.target.result.split(',')[1], mimeType: file.type, fileName: file.name };
-        submitToServer(payload);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      submitToServer(payload);
-    }
+function closeJobsModal() { $('jobsModal').classList.add('hidden'); }
+
+function uploadExtraPhotoHandler(input) {
+  if (!input.files || !input.files[0]) return;
+  var petId = $('j_petId').value;
+  if (!petId) return;
+  $('photoGallery').innerHTML = '<div class="text-xs text-indigo-600 py-2 font-bold animate-pulse">กำลังอัปโหลดรูปภาพใหม่...</div>';
+  readImage(input.files[0], function(img) {
+    if (!img) return;
+    callServer('uploadExtraPhoto', [{ petId: petId, image: img }], function(res) {
+      input.value = '';
+      renderPhotos(res && res.photos);
+    }, function(msg) {
+      input.value = '';
+      alert('อัปโหลดรูปไม่สำเร็จ: ' + msg);
+      callServer('getPetExtraPhotos', [petId], renderPhotos);
+    });
   });
 }
 
-function openJobsModal(petId, petName, owner) {
-  if ($('j_petId')) $('j_petId').value = petId;
-  if ($('jobModalPetName')) $('jobModalPetName').textContent = '📅 Jobs & รูปภาพ: ' + petName;
-  if ($('jobModalPetDetail')) $('jobModalPetDetail').textContent = 'เจ้าของ: ' + (owner || '-');
-  
-  resetJobForm();
-  if ($('photoGallery')) $('photoGallery').innerHTML = '<div class="text-xs text-slate-400 py-2">กำลังโหลดรูปภาพ...</div>';
-  if ($('jobsList')) $('jobsList').innerHTML = '<div class="flex justify-center py-4"><div class="spinner"></div></div>';
-  if ($('jobsModal')) $('jobsModal').classList.remove('hidden');
-
-  google.script.run.withSuccessHandler(function(photos) { renderPhotos(photos); }).getPetExtraPhotos(petId);
-  google.script.run.withSuccessHandler(function(jobs) { currentJobsCache = jobs || []; renderJobs(jobs); }).getPetJobs(petId);
-}
-
-function closeJobsModal() { if ($('jobsModal')) $('jobsModal').classList.add('hidden'); }
-
-// อัปโหลดรูปภาพเพิ่มเติมในโปรไฟล์สัตว์
-function uploadExtraPhotoHandler(input) {
-  if (!input.files || !input.files[0]) return;
-  var file = input.files[0];
-  var petId = $('j_petId').value;
-  if (!petId) return;
-
-  var reader = new FileReader();
-  reader.onload = function(evt) {
-    var base64 = evt.target.result.split(',')[1];
-    if ($('photoGallery')) $('photoGallery').innerHTML = '<div class="text-xs text-indigo-600 py-2 font-bold animate-pulse">กำลังอัปโหลดรูปภาพใหม่...</div>';
-    
-    google.script.run
-      .withSuccessHandler(function(res) {
-        input.value = '';
-        if (res && res.photos) {
-          renderPhotos(res.photos);
-        }
-      })
-      .withFailureHandler(function(err) {
-        input.value = '';
-        alert('อัปโหลดรูปไม่สำเร็จ: ' + (err.message || String(err)));
-      })
-      .uploadExtraPhoto({ petId: petId, image: { base64: base64, mimeType: file.type, fileName: file.name } });
-  };
-  reader.readAsDataURL(file);
-}
-
 function resetJobForm() {
-  var jobForm = $('addJobForm');
-  if (jobForm) jobForm.reset();
-  if ($('j_jobId')) $('j_jobId').value = '';
-  if ($('j_startDate')) $('j_startDate').value = todayStr();
-  if ($('j_endDate')) $('j_endDate').value = todayStr();
-  if ($('jobFormTitle')) $('jobFormTitle').textContent = '➕ เพิ่ม Job งานรับดูแลใหม่';
-  if ($('cancelEditJobBtn')) $('cancelEditJobBtn').classList.add('hidden');
-  if ($('j_submitBtn')) $('j_submitBtn').textContent = '+ บันทึก Job ใหม่';
+  $('addJobForm').reset();
+  $('j_jobId').value = '';
+  $('j_startDate').value = todayStr();
+  $('j_endDate').value = todayStr();
+  $('jobFormTitle').textContent = '➕ เพิ่ม Job งานรับดูแลใหม่';
+  $('cancelEditJobBtn').classList.add('hidden');
+  $('j_submitBtn').textContent = '+ บันทึก Job ใหม่';
+  $('j_submitBtn').disabled = false;
 }
 
 function editJob(jobId) {
   var job = currentJobsCache.find(function(j) { return String(j.jobId) === String(jobId); });
   if (!job) return;
-
-  if ($('j_jobId')) $('j_jobId').value = job.jobId;
-  if ($('j_type')) $('j_type').value = job.type || 'Dropin Visit';
-  if ($('j_price')) $('j_price').value = job.price || 0;
-  if ($('j_tip')) $('j_tip').value = job.tip || 0;
-  if ($('j_pickupPrice')) $('j_pickupPrice').value = job.pickupPrice || 0;
-  if ($('j_cost')) $('j_cost').value = job.cost || 0;
-  if ($('j_startDate')) $('j_startDate').value = job.startDate || todayStr();
-  if ($('j_endDate')) $('j_endDate').value = job.endDate || todayStr();
-
-  if ($('jobFormTitle')) $('jobFormTitle').textContent = '✏️ แก้ไข Job (ID: ' + job.jobId + ')';
-  if ($('cancelEditJobBtn')) $('cancelEditJobBtn').classList.remove('hidden');
-  if ($('j_submitBtn')) $('j_submitBtn').textContent = '💾 บันทึกการแก้ไข Job';
-  
+  $('j_jobId').value = job.jobId;
+  var typeSel = $('j_type');
+  if (job.type && !Array.prototype.some.call(typeSel.options, function(o) { return o.value === job.type; })) {
+    var opt = document.createElement('option'); opt.value = job.type; opt.textContent = job.type; typeSel.appendChild(opt);
+  }
+  typeSel.value = job.type || 'Dropin Visit';
+  $('j_price').value = job.price || 0;
+  $('j_tip').value = job.tip || 0;
+  $('j_pickupPrice').value = job.pickupPrice || 0;
+  $('j_cost').value = job.cost || 0;
+  $('j_startDate').value = job.startDate || todayStr();
+  $('j_endDate').value = job.endDate || job.startDate || todayStr();
+  $('j_note').value = job.note || '';
+  $('jobFormTitle').textContent = '✏️ แก้ไข Job (ID: ' + job.jobId + ')';
+  $('cancelEditJobBtn').classList.remove('hidden');
+  $('j_submitBtn').textContent = '💾 บันทึกการแก้ไข Job';
   var modalBox = document.querySelector('#jobsModal > div');
   if (modalBox) modalBox.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function renderPhotos(photos) {
   if (!photos || !photos.length) {
-    if ($('photoGallery')) $('photoGallery').innerHTML = '<div class="text-xs text-slate-400 py-2">ยังไม่มีรูปภาพเพิ่มเติม กดปุ่ม "เพิ่มรูปใหม่" ด้านบนได้เลย</div>';
+    $('photoGallery').innerHTML = '<div class="text-xs text-slate-400 py-2">ยังไม่มีรูปภาพเพิ่มเติม กดปุ่ม "เพิ่มรูปใหม่" ด้านบนได้เลย</div>';
     return;
   }
   var html = '';
   photos.forEach(function(url) {
-    html += '<img src="' + esc(url) + '" class="w-[48%] h-28 rounded-xl object-cover shrink-0 border border-slate-200 snap-start shadow-sm" alt="Pet Photo" referrerpolicy="no-referrer" onerror="this.style.display=\'none\';">';
+    html += '<a href="' + esc(url) + '" target="_blank" class="w-[48%] shrink-0 snap-start"><img src="' + esc(url) + '" class="w-full h-28 rounded-xl object-cover border border-slate-200 shadow-sm" alt="Pet Photo" referrerpolicy="no-referrer" onerror="this.parentNode.style.display=\'none\';"></a>';
   });
-  if ($('photoGallery')) $('photoGallery').innerHTML = html;
+  $('photoGallery').innerHTML = html;
 }
 
 function renderJobs(jobs) {
   if (!jobs || !jobs.length) {
-    if ($('jobsList')) $('jobsList').innerHTML = '<div class="text-center text-xs text-slate-400 py-4">ยังไม่มีประวัติงานรับดูแล</div>';
+    $('jobsList').innerHTML = '<div class="text-center text-xs text-slate-400 py-4">ยังไม่มีประวัติงานรับดูแล</div>';
     return;
   }
   var html = '';
@@ -845,161 +856,213 @@ function renderJobs(jobs) {
     if (j.price) details.push('Price: ' + money(j.price));
     if (j.tip) details.push('Tip: ' + money(j.tip));
     if (j.pickupPrice) details.push('Pickup: ' + money(j.pickupPrice));
-    if (j.cost) details.push('Cost: <span class="text-red-600">' + money(j.cost) + '</span>');
-
+    if (j.cost) details.push('Cost: <span class="text-red-600">' + money(-Math.abs(j.cost)) + '</span>');
     html += '<div class="bg-white p-2.5 rounded-xl border border-slate-200 text-xs space-y-1 relative">' +
         '<div class="flex justify-between items-center font-semibold text-slate-800 pr-14">' +
           '<span>' + esc(j.type) + '</span>' +
           '<span class="text-emerald-600 font-bold text-sm">' + money(j.netTotal) + '</span>' +
         '</div>' +
         '<button onclick="editJob(\'' + esc(j.jobId) + '\')" class="absolute top-2.5 right-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded">✏️ แก้ไข</button>' +
-        '<div class="text-slate-500">🗓️ ' + esc(j.startDate || '-') + ' ถึง ' + esc(j.endDate || '-') + '</div>' +
+        '<div class="text-slate-500">🗓️ ' + esc(j.startDate || '-') + ' ถึง ' + esc(j.endDate || '-') + (j.source ? ' · ' + esc(j.source) : '') + '</div>' +
         (details.length ? '<div class="text-[11px] text-slate-600 bg-slate-50 px-2 py-1 rounded border border-slate-100 flex flex-wrap gap-x-3 gap-y-0.5">' + details.join(' | ') + '</div>' : '') +
+        (j.note ? '<div class="text-[11px] text-slate-500">📝 ' + esc(j.note) + '</div>' : '') +
       '</div>';
   });
-  if ($('jobsList')) $('jobsList').innerHTML = html;
+  $('jobsList').innerHTML = html;
 }
 
-var addJobFormEl = $('addJobForm');
-if (addJobFormEl) {
-  addJobFormEl.addEventListener('submit', function(e) {
-    e.preventDefault();
-    var petId = $('j_petId').value;
-    var jobId = $('j_jobId').value;
-    var price = $('j_price').value;
-    var tip = $('j_tip').value;
-    var pickupPrice = $('j_pickupPrice').value;
-    var cost = $('j_cost').value;
-    var startDate = $('j_startDate').value;
-    var endDate = $('j_endDate').value;
-    var type = $('j_type').value;
-
-    var btn = $('j_submitBtn');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'กำลังบันทึก...';
-    }
-
-    google.script.run
-      .withSuccessHandler(function(res) {
-        if (btn) {
-          btn.disabled = false;
-        }
-        resetJobForm();
-        if (res && res.jobs) {
-          currentJobsCache = res.jobs;
-          renderJobs(res.jobs);
-        }
-        if (res && res.pets) {
-          petsData = res.pets;
-          renderPets();
-        }
-      })
-      .withFailureHandler(function(err) {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = '+ บันทึก Job ใหม่';
-        }
-        alert('เกิดข้อผิดพลาด: ' + (err.message || String(err)));
-      })
-      .saveJob({ jobId: jobId, petId: petId, price: price, tip: tip, pickupPrice: pickupPrice, cost: cost, startDate: startDate, endDate: endDate, serviceType: type });
+$('addJobForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var startDate = $('j_startDate').value, endDate = $('j_endDate').value || startDate;
+  if (endDate < startDate) return alert('วันสิ้นสุดต้องไม่ก่อนวันเริ่มงาน');
+  var btn = $('j_submitBtn');
+  var isEdit = !!$('j_jobId').value;
+  setBusy(btn, true);
+  var payload = {
+    jobId: $('j_jobId').value, petId: $('j_petId').value, serviceType: $('j_type').value,
+    price: $('j_price').value, tip: $('j_tip').value, pickupPrice: $('j_pickupPrice').value, cost: $('j_cost').value,
+    startDate: startDate, endDate: endDate, note: $('j_note').value.trim()
+  };
+  callServer('saveJob', [payload], function(res) {
+    resetJobForm();
+    if (res && res.jobs) { currentJobsCache = res.jobs; renderJobs(res.jobs); }
+    if (res && res.pets) { petsData = res.pets; renderPets(); }
+  }, function(msg) {
+    setBusy(btn, false, isEdit ? '💾 บันทึกการแก้ไข Job' : '+ บันทึก Job ใหม่');
+    alert('เกิดข้อผิดพลาด: ' + msg);
   });
-}
+});
 
 // === Inventory Functions ===
 function loadProducts() {
-  if ($('productList')) $('productList').innerHTML = '<div class="flex justify-center py-10"><div class="spinner"></div></div>';
-  google.script.run.withSuccessHandler(function(data) { productsData = data || []; renderProducts(); }).getProducts();
+  $('productList').innerHTML = '<div class="flex justify-center py-10"><div class="spinner"></div></div>';
+  callServer('getProducts', [], function(data) { productsData = data || []; renderProducts(); },
+    function(msg) { $('productList').innerHTML = errorBox(msg); });
 }
 
 function setFilter(f) {
   currentFilter = f;
   ['all', 'open', 'sold'].forEach(function(k) {
     var el = $('flt-' + k);
-    if (el) el.className = (k === f) ? 'flex-1 py-1.5 rounded-full font-medium bg-white shadow text-indigo-700' : 'flex-1 py-1.5 rounded-full font-medium text-slate-600';
+    if (el) el.className = (k === f) ? 'flex-1 px-2 py-1.5 rounded-full font-medium text-xs sm:text-sm bg-white shadow text-indigo-700' : 'flex-1 px-2 py-1.5 rounded-full font-medium text-xs sm:text-sm text-slate-600';
   });
   renderProducts();
 }
 
 function renderProducts() {
-  var q = $('searchBox') ? $('searchBox').value.trim().toLowerCase() : '';
+  var q = $('searchBox').value.trim().toLowerCase();
   var list = productsData.filter(function(p) {
     if (currentFilter === 'open' && p.sold) return false;
     if (currentFilter === 'sold' && !p.sold) return false;
-    if (q && String(p.name).toLowerCase().indexOf(q) === -1) return false;
+    if (q && String(p.name).toLowerCase().indexOf(q) === -1 && String(p.id).toLowerCase().indexOf(q) === -1) return false;
     return true;
   });
 
-  if ($('productCount')) $('productCount').textContent = list.length + ' / ' + productsData.length + ' รายการ';
+  $('productCount').textContent = list.length + ' / ' + productsData.length + ' รายการ';
   var html = '';
   list.forEach(function(p) {
-    var action = p.sold ? 
-      '<div class="mt-2 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800"><b>ขายแล้ว:</b> ' + money(p.salePrice) + ' (' + esc(p.saleDate) + ') กำไร: <span class="font-bold text-emerald-600">' + money(p.salePrice - p.cost) + '</span></div>' :
-      '<div class="flex gap-2 mt-2"><button onclick="openSoldModal(\'' + esc(p.id) + '\')" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-1.5">💰 บันทึกว่าขายแล้ว</button></div>';
+    var pid = esc(p.id);
+    var editBtn = '<button onclick="openEditProductModal(\'' + pid + '\')" class="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5">✏️ แก้ไข</button>';
+    var action = p.sold ?
+      '<div class="mt-2 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800"><b>ขายแล้ว:</b> ' + money(p.salePrice) + (p.saleDate ? ' (' + esc(p.saleDate) + ')' : '') +
+        ' กำไร: <span class="font-bold ' + (p.salePrice - p.cost >= 0 ? 'text-emerald-600' : 'text-red-600') + '">' + money(p.salePrice - p.cost) + '</span></div>' +
+        '<div class="flex justify-end mt-2">' + editBtn + '</div>' :
+      '<div class="flex gap-2 mt-2"><button onclick="openSoldModal(\'' + pid + '\')" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-1.5">💰 บันทึกว่าขายแล้ว</button>' + editBtn + '</div>';
 
-    html += '<div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex gap-3">' +
+    var dates = [];
+    if (p.startDate) dates.push('ซื้อ ' + esc(p.startDate));
+    if (p.postDate) dates.push('ลงขาย ' + esc(p.postDate));
+
+    html += '<div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex gap-3 fade-in">' +
       renderImage(p.image) +
       '<div class="min-w-0 flex-1">' +
-        '<div class="font-semibold text-sm">' + esc(p.name) + '</div>' +
+        '<div class="flex items-start justify-between gap-2"><div class="font-semibold text-sm">' + esc(p.name) + '</div>' +
+          '<span class="text-[10px] shrink-0 px-2 py-0.5 rounded-full font-semibold ' + (p.sold ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700') + '">' + (p.sold ? 'ขายแล้ว' : 'ยังไม่ขาย') + '</span></div>' +
         '<div class="text-xs text-slate-500 mt-0.5">ทุน: <b class="text-indigo-600">' + money(p.cost) + '</b> | ตั้งขาย: <b class="text-emerald-600">' + money(p.postPrice) + '</b></div>' +
+        (dates.length ? '<div class="text-[11px] text-slate-400 mt-0.5">' + dates.join(' · ') + '</div>' : '') +
+        (p.note ? '<div class="text-[11px] text-slate-500 mt-0.5">📝 ' + esc(p.note) + '</div>' : '') +
         action +
       '</div></div>';
   });
-  if ($('productList')) $('productList').innerHTML = html || '<div class="text-center text-slate-400 py-10 bg-white rounded-2xl border border-dashed">ไม่พบรายการสินค้า</div>';
+  $('productList').innerHTML = html || '<div class="text-center text-slate-400 py-10 bg-white rounded-2xl border border-dashed">ไม่พบรายการสินค้า</div>';
 }
 
-function openAddProductModal() { if ($('addProductModal')) $('addProductModal').classList.remove('hidden'); }
-function closeAddProductModal() { if ($('addProductModal')) $('addProductModal').classList.add('hidden'); }
+function toggleSoldFields() {
+  var on = $('a_sold').checked;
+  $('a_soldFields').classList.toggle('hidden', !on);
+  if (on && !$('a_saleDate').value) $('a_saleDate').value = todayStr();
+  if (on && !$('a_salePrice').value) $('a_salePrice').value = $('a_postPrice').value || '';
+}
+
+function openAddProductModal() {
+  $('addProductForm').reset();
+  $('a_id').value = '';
+  $('productModalTitle').textContent = '✨ เพิ่มรายการสินค้าใหม่';
+  $('a_preview').innerHTML = '📦';
+  $('a_fileHint').classList.add('hidden');
+  $('a_deleteBtn').classList.add('hidden');
+  $('a_startDate').value = todayStr();
+  toggleSoldFields();
+  $('addProductModal').classList.remove('hidden');
+}
+
+function openEditProductModal(id) {
+  var p = productsData.find(function(x) { return String(x.id) === String(id); });
+  if (!p) return;
+  $('addProductForm').reset();
+  $('a_id').value = p.id;
+  $('a_name').value = p.name || '';
+  $('a_startDate').value = p.startDate || '';
+  $('a_cost').value = p.cost || 0;
+  $('a_postDate').value = p.postDate || '';
+  $('a_postPrice').value = p.postPrice || 0;
+  $('a_note').value = p.note || '';
+  $('a_sold').checked = !!p.sold;
+  $('a_saleDate').value = p.saleDate || '';
+  $('a_salePrice').value = p.sold ? (p.salePrice || 0) : '';
+  $('a_preview').innerHTML = p.image ? '<img src="' + esc(p.image) + '" class="h-full w-full object-cover" referrerpolicy="no-referrer">' : '📦';
+  $('a_fileHint').classList.remove('hidden');
+  $('a_deleteBtn').classList.remove('hidden');
+  $('productModalTitle').textContent = '✏️ แก้ไขสินค้า';
+  toggleSoldFields();
+  $('addProductModal').classList.remove('hidden');
+}
+
+function closeAddProductModal() { $('addProductModal').classList.add('hidden'); }
+
+function deleteProductHandler() {
+  var id = $('a_id').value;
+  if (!id || !confirm('ลบสินค้านี้ออกจากชีต Products? (ย้อนกลับไม่ได้)')) return;
+  var btn = $('a_deleteBtn');
+  btn.disabled = true;
+  callServer('deleteProduct', [id], function(res) {
+    btn.disabled = false;
+    closeAddProductModal();
+    if (res && res.products) { productsData = res.products; renderProducts(); }
+  }, function(msg) { btn.disabled = false; alert('ลบไม่สำเร็จ: ' + msg); });
+}
+
+$('addProductForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var name = $('a_name').value.trim();
+  if (!name) return alert('กรุณากรอกชื่อสินค้า');
+  var id = $('a_id').value;
+  var sold = $('a_sold').checked;
+  var payload = {
+    id: id, name: name,
+    startDate: $('a_startDate').value, cost: $('a_cost').value,
+    postDate: $('a_postDate').value, postPrice: $('a_postPrice').value,
+    note: $('a_note').value.trim(),
+    sold: sold, saleDate: sold ? ($('a_saleDate').value || todayStr()) : '', salePrice: sold ? $('a_salePrice').value : '',
+    image: null
+  };
+  var btn = $('a_submitBtn');
+  setBusy(btn, true);
+  var fileInput = $('a_file');
+  readImage(fileInput.files && fileInput.files[0], function(img) {
+    payload.image = img;
+    callServer(id ? 'updateProduct' : 'addProduct', [payload], function(res) {
+      setBusy(btn, false, 'บันทึก');
+      closeAddProductModal();
+      if (res && res.products) { productsData = res.products; renderProducts(); }
+    }, function(msg) {
+      setBusy(btn, false, 'บันทึก');
+      alert('เกิดข้อผิดพลาด: ' + msg);
+    });
+  });
+});
 
 function openSoldModal(id) {
   var p = productsData.find(function(x) { return String(x.id) === String(id); });
   if (!p) return;
-  if ($('s_id')) $('s_id').value = id;
-  if ($('soldItemName')) $('soldItemName').textContent = p.name;
-  if ($('s_price')) $('s_price').value = p.postPrice || p.cost || '';
-  if ($('s_date')) $('s_date').value = todayStr();
-  if ($('soldModal')) $('soldModal').classList.remove('hidden');
+  $('s_id').value = id;
+  $('soldItemName').textContent = p.name;
+  $('s_price').value = p.postPrice || p.cost || '';
+  $('s_date').value = todayStr();
+  $('soldModal').classList.remove('hidden');
 }
-function closeSoldModal() { if ($('soldModal')) $('soldModal').classList.add('hidden'); }
+function closeSoldModal() { $('soldModal').classList.add('hidden'); }
 
-var soldFormEl = $('soldForm');
-if (soldFormEl) {
-  soldFormEl.addEventListener('submit', function(e) {
-    e.preventDefault();
-    var id = $('s_id').value;
-    var price = $('s_price').value;
-    var date = $('s_date').value;
-    google.script.run.withSuccessHandler(function(res) {
-      closeSoldModal();
-      if (res && res.products) { productsData = res.products; renderProducts(); }
-    }).markAsSold(id, price, date);
-  });
-}
-
-var addProductFormEl = $('addProductForm');
-if (addProductFormEl) {
-  addProductFormEl.addEventListener('submit', function(e) {
-    e.preventDefault();
-    var payload = {
-      name: $('a_name').value, startDate: $('a_startDate').value,
-      cost: $('a_cost').value, postDate: $('a_postDate').value, postPrice: $('a_postPrice').value
-    };
-    google.script.run.withSuccessHandler(function(res) {
-      closeAddProductModal();
-      if (res && res.products) { productsData = res.products; renderProducts(); }
-    }).addProduct(payload);
-  });
-}
+$('soldForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var btn = $('s_submitBtn');
+  setBusy(btn, true);
+  callServer('markAsSold', [$('s_id').value, $('s_price').value, $('s_date').value], function(res) {
+    setBusy(btn, false, 'บันทึก');
+    closeSoldModal();
+    if (res && res.products) { productsData = res.products; renderProducts(); }
+  }, function(msg) { setBusy(btn, false, 'บันทึก'); alert('เกิดข้อผิดพลาด: ' + msg); });
+});
 
 // === Dashboard & All Graphs ===
 function loadDashboard() {
-  google.script.run.withSuccessHandler(function(summary) {
+  callServer('getRevenueSummary', [], function(summary) {
     if ($('kpiNetProfit')) $('kpiNetProfit').textContent = money(summary.netProfit);
     if ($('kpiPetProfit')) $('kpiPetProfit').textContent = money(summary.totalPetProfit);
     if ($('kpiProductProfit')) $('kpiProductProfit').textContent = money(summary.totalProductProfit);
     if ($('kpiSoldCount')) $('kpiSoldCount').textContent = summary.soldCount + ' รายการ';
     renderAllDashboardCharts(summary.monthlyData);
-  }).getRevenueSummary();
+  });
 }
 
 function createChart(canvasId, type, labels, datasets, isStacked) {
@@ -1043,11 +1106,11 @@ function renderAllDashboardCharts(monthlyData) {
 var pokerData = { results: [] };
 function loadPoker() {
   if ($('pkFilterDate') && !$('pkFilterDate').value) $('pkFilterDate').value = todayStr();
-  google.script.run.withSuccessHandler(function(data) {
+  callServer('getPokerData', [], function(data) {
     pokerData = data || { results: [] };
     renderPokerDashboard();
     renderPokerRawTable();
-  }).getPokerData();
+  });
 }
 
 function openAddPokerModal() {
@@ -1082,14 +1145,12 @@ function submitPokerBatch() {
     btn.disabled = true;
     btn.textContent = 'กำลังบันทึก...';
   }
-  google.script.run.withSuccessHandler(function(res) {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'บันทึกทั้งหมดลงชีต';
-    }
+  var payload = { date: $('pk_modalDate').value || todayStr(), sessionId: $('pk_modalSessionId').value || '1', rows: rows };
+  callServer('addPokerBatchResults', [payload], function(res) {
+    setBusy(btn, false, 'บันทึกทั้งหมดลงชีต');
     closeAddPokerModal();
     if (res && res.poker) { pokerData = res.poker; renderPokerDashboard(); renderPokerRawTable(); }
-  }).addPokerBatchResults({ date: $('pk_modalDate') ? $('pk_modalDate').value : todayStr(), sessionId: $('pk_modalSessionId') ? $('pk_modalSessionId').value : '1', rows: rows });
+  }, function(msg) { setBusy(btn, false, 'บันทึกทั้งหมดลงชีต'); alert('เกิดข้อผิดพลาด: ' + msg); });
 }
 
 function renderPokerDashboard() {

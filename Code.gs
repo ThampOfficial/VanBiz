@@ -30,7 +30,82 @@ function ss_() {
   return CONFIG.SPREADSHEET_ID ? SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID) : SpreadsheetApp.getActiveSpreadsheet();
 }
 
-function tz_() { return Session.getScriptTimeZone(); }
+// ใช้ timezone ของชีต เพื่อให้วันที่ที่อ่านจากชีตไม่เลื่อนวัน
+let cachedTz_ = null;
+function tz_() {
+  if (cachedTz_) return cachedTz_;
+  try { cachedTz_ = ss_().getSpreadsheetTimeZone(); } catch (e) {}
+  if (!cachedTz_) cachedTz_ = Session.getScriptTimeZone();
+  return cachedTz_;
+}
+
+// ล็อกการเขียน ป้องกันเขียนชนกันเมื่อเปิดหลายเครื่องพร้อมกัน
+function withLock_(fn) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try { return fn(); } finally { lock.releaseLock(); }
+}
+
+// สร้าง ID แบบ 8 ตัวอักษร hex (รูปแบบเดียวกับข้อมูลเดิมในชีต) และไม่ซ้ำกับคอลัมน์ A
+function newId_(sh) {
+  const existing = {};
+  if (sh && sh.getLastRow() >= 2) {
+    sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().forEach(r => { existing[toText_(r[0]).toLowerCase()] = true; });
+  }
+  let id;
+  do { id = Utilities.getUuid().replace(/-/g, '').substring(0, 8); } while (existing[id]);
+  return id;
+}
+
+function findRowById_(sh, id, col) {
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2 || id === null || id === undefined || id === '') return 0;
+  const target = String(id).trim().toLowerCase();
+  const ids = sh.getRange(2, col || 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (toText_(ids[i][0]).toLowerCase() === target) return i + 2;
+  }
+  return 0;
+}
+
+// ดึง Drive file ID จากลิงก์ทุกรูปแบบ (drive / docs / lh3)
+function extractDriveId_(s) {
+  const str = String(s || '').trim();
+  const m = str.match(/drive\.google\.com\/.*?(?:\/d\/|[?&]id=)([-\w]{20,})/) ||
+            str.match(/docs\.google\.com\/.*?\/d\/([-\w]{20,})/) ||
+            str.match(/googleusercontent\.com\/d\/([-\w]{20,})/);
+  return m ? m[1] : '';
+}
+
+// หา file ID จาก path แบบ "Folder_Images/xxx.jpg" โดยเทียบชื่อไฟล์เต็มก่อน แล้วค่อยเทียบ prefix
+function fileIdFromPath_(rawPath, map) {
+  const rawStr = String(rawPath || '').trim();
+  if (!rawStr) return '';
+  const direct = extractDriveId_(rawStr);
+  if (direct) return direct;
+  const fileName = rawStr.split('/').pop().split('\\').pop().toLowerCase();
+  if (!fileName) return '';
+  if (map.full && map.full[fileName]) return map.full[fileName];
+  const dotIdx = fileName.indexOf('.');
+  const filePrefix = dotIdx > 0 ? fileName.substring(0, dotIdx).trim() : fileName.trim();
+  return (filePrefix && map.prefix && map.prefix[filePrefix]) || '';
+}
+
+function fileExt_(fileName, mimeType) {
+  const m = String(fileName || '').match(/\.([a-z0-9]{2,5})$/i);
+  if (m) return m[1].toLowerCase();
+  if (mimeType === 'image/png') return 'png';
+  if (mimeType === 'image/webp') return 'webp';
+  return 'jpg';
+}
+
+function saveImageToFolder_(image, folderId, fileName) {
+  const bytes = Utilities.base64Decode(image.base64);
+  const blob = Utilities.newBlob(bytes, image.mimeType || 'image/jpeg', fileName);
+  const file = DriveApp.getFolderById(folderId).createFile(blob);
+  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+  return file;
+}
 
 function toText_(v) {
   if (v === null || v === undefined) return '';
@@ -59,12 +134,10 @@ function fmtDate_(v) {
 
 function parseDate_(v) {
   if (!v) return null;
-  if (v instanceof Date) return new Date(v.getFullYear(), v.getMonth(), v.getDate());
-  const s = String(v).trim();
+  const s = fmtDate_(v);
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (m) return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  return null;
 }
 
 // 1. ฟังก์ชันสแกนโฟลเดอร์รูปหน้าปกสัตว์ (Animals Lover_Images)
@@ -189,31 +262,13 @@ function resolveCoverPhotoUrl_(rawPath, mapObj, id) {
   const fileIdMap = map.full || {};
   const prefixMap = map.prefix || {};
 
-  let fileId = '';
-  if (id !== null && id !== undefined) {
-    const cleanId = String(id).trim().toLowerCase();
-    if (cleanId && prefixMap[cleanId]) {
-      fileId = prefixMap[cleanId];
-    }
-  }
+  // 1) ใช้ path/ลิงก์ที่บันทึกในชีตก่อน (แม่นที่สุด และได้รูปล่าสุดเมื่อเปลี่ยนรูป)
+  let fileId = fileIdFromPath_(rawPath, { full: fileIdMap, prefix: prefixMap });
 
-  if (!fileId && rawPath) {
-    const rawStr = String(rawPath).trim();
-    const m = rawStr.match(/drive\.google\.com\/.*?(?:\/d\/|[?&]id=)([-\w]{20,})/) || rawStr.match(/docs\.google\.com\/.*?\/d\/([-\w]{20,})/);
-    if (m) {
-      fileId = m[1];
-    } else {
-      const fileName = rawStr.split('/').pop().split('\\').pop().toLowerCase();
-      if (fileName && fileIdMap[fileName]) {
-        fileId = fileIdMap[fileName];
-      } else {
-        const dotIdx = fileName.indexOf('.');
-        const filePrefix = dotIdx > 0 ? fileName.substring(0, dotIdx).trim() : fileName.trim();
-        if (filePrefix && prefixMap[filePrefix]) {
-          fileId = prefixMap[filePrefix];
-        }
-      }
-    }
+  // 2) ถ้าไม่เจอ ค่อยหาไฟล์ที่ชื่อขึ้นต้นด้วย ID
+  if (!fileId && id !== null && id !== undefined) {
+    const cleanId = String(id).trim().toLowerCase();
+    if (cleanId && prefixMap[cleanId]) fileId = prefixMap[cleanId];
   }
 
   return fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : '';
@@ -229,30 +284,12 @@ function getAnimalPhotosMap_() {
   
   const values = sh.getRange(2, 1, lastRow - 1, 3).getValues();
   const fileMap = getAnimalPhotosFileMap_();
-  const fileIdMap = fileMap.full || {};
-  const prefixMap = fileMap.prefix || {};
 
   values.forEach(r => {
     const animalId = toText_(r[1]).toLowerCase();
     const rawPhotoPath = toText_(r[2]);
     if (animalId && rawPhotoPath) {
-      let fileId = '';
-      const rawStr = String(rawPhotoPath).trim();
-      const m = rawStr.match(/drive\.google\.com\/.*?(?:\/d\/|[?&]id=)([-\w]{20,})/) || rawStr.match(/docs\.google\.com\/.*?\/d\/([-\w]{20,})/);
-      if (m) {
-        fileId = m[1];
-      } else {
-        const fileName = rawStr.split('/').pop().split('\\').pop().toLowerCase();
-        if (fileName && fileIdMap[fileName]) {
-          fileId = fileIdMap[fileName];
-        } else {
-          const dotIdx = fileName.indexOf('.');
-          const filePrefix = dotIdx > 0 ? fileName.substring(0, dotIdx).trim() : fileName.trim();
-          if (filePrefix && prefixMap[filePrefix]) {
-            fileId = prefixMap[filePrefix];
-          }
-        }
-      }
+      const fileId = fileIdFromPath_(rawPhotoPath, fileMap);
       if (fileId) {
         const url = 'https://lh3.googleusercontent.com/d/' + fileId;
         if (!map[animalId]) map[animalId] = [];
@@ -273,7 +310,7 @@ function getCareLogFullMap_() {
   const values = sh.getRange(2, 1, lastRow - 1, 26).getValues();
   values.forEach(r => {
     const animalId = toText_(r[1]).toLowerCase();
-    if (animalId) {
+    if (animalId && !map[animalId]) { // ใช้แถวแรกของสัตว์ตัวนั้น (แถวเดียวกับที่บันทึกตอนแก้ไข)
       map[animalId] = {
         logId: toText_(r[0]),
         addressUnit: toText_(r[2]),
@@ -285,6 +322,7 @@ function getCareLogFullMap_() {
         water: toText_(r[9]),
         treat: toText_(r[10]),
         avoidFood: toText_(r[11]),
+        foodTrashBin: toText_(r[12]),
         litterLocation: toText_(r[13]),
         litterTrashBin: toText_(r[15]),
         cleaningSupply: toText_(r[16]),
@@ -422,83 +460,92 @@ function getPetStatsFromJobs_() {
 
 function updateAnimal(data) {
   if (!data || !data.id) throw new Error('ไม่พบ ID สัตว์เลี้ยง');
-  const ss = ss_();
-  let sh = ss.getSheetByName(CONFIG.SHEETS.PETS) || ss.getSheetByName('Animals');
-  const lastRow = sh.getLastRow();
-  if (lastRow >= 2) {
-    const ids = sh.getRange(2, 1, lastRow - 1, 1).getValues();
-    for (let i = 0; i < ids.length; i++) {
-      if (toText_(ids[i][0]).toLowerCase() === String(data.id).toLowerCase()) {
-        const row = i + 2;
-        sh.getRange(row, 2).setValue(data.name || '');
-        sh.getRange(row, 3).setValue(data.category || '');
-        sh.getRange(row, 5).setValue(data.owner || '');
-        sh.getRange(row, 6).setValue(data.location || '');
-        sh.getRange(row, 7).setValue(data.room || '');
-        if (data.image && data.image.base64) {
-          const bytes = Utilities.base64Decode(data.image.base64);
-          const blob = Utilities.newBlob(bytes, data.image.mimeType || 'image/jpeg', data.id + '.' + data.image.fileName);
-          const file = DriveApp.getFolderById(CONFIG.ANIMALS_LOVER_FOLDER_ID).createFile(blob);
-          try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
-          sh.getRange(row, 4).setValue('Animals Lover_Images/' + file.getName());
-        }
-        break;
-      }
+  return withLock_(() => {
+    const ss = ss_();
+    const sh = ss.getSheetByName(CONFIG.SHEETS.PETS) || ss.getSheetByName('Animals');
+    const row = findRowById_(sh, data.id, 1);
+    if (!row) throw new Error('ไม่พบสัตว์เลี้ยง ID: ' + data.id + ' ในชีต');
+    sh.getRange(row, 2, 1, 1).setValue(data.name || '');
+    sh.getRange(row, 3, 1, 1).setValue(data.category || '');
+    sh.getRange(row, 5, 1, 3).setValues([[data.owner || '', data.location || '', data.room || '']]);
+    if (data.image && data.image.base64) {
+      const fileName = data.id + '.Picture.' + Date.now() + '.' + fileExt_(data.image.fileName, data.image.mimeType);
+      const file = saveImageToFolder_(data.image, CONFIG.ANIMALS_LOVER_FOLDER_ID, fileName);
+      sh.getRange(row, 4).setValue('Animals Lover_Images/' + file.getName());
     }
-  }
-  savePetCareLog_(data);
-  SpreadsheetApp.flush();
-  return { ok: true, pets: getPetSitterData() };
+    savePetCareLog_(data);
+    SpreadsheetApp.flush();
+    return { ok: true, pets: getPetSitterData() };
+  });
 }
 
+// บันทึก PetCareLog เฉพาะคอลัมน์ที่ฟอร์มแก้ได้ คอลัมน์อื่น (PlacementPhoto, FoodTrashBin ฯลฯ) คงค่าเดิมไว้
 function savePetCareLog_(data) {
   const ss = ss_();
   let sh = ss.getSheetByName(CONFIG.SHEETS.CARE_LOG);
   if (!sh) sh = ss.insertSheet(CONFIG.SHEETS.CARE_LOG);
-  const lastRow = sh.getLastRow();
-  let foundRow = 0;
-  if (lastRow >= 2) {
-    const ids = sh.getRange(2, 2, lastRow - 1, 1).getValues();
-    for (let i = 0; i < ids.length; i++) {
-      if (toText_(ids[i][0]).toLowerCase() === String(data.id).toLowerCase()) {
-        foundRow = i + 2;
-        break;
-      }
-    }
-  }
+  const WIDTH = 26;
   const c = data.careDetail || {};
-  const rowData = [
-    c.logId || ('LOG-' + Date.now()), data.id, data.room || '', c.visitDates || '', c.timeOfDay || '',
-    c.wetFood || '', c.wetFoodBrand || '', '', c.dryFood || '', c.water || '', c.treat || '',
-    c.avoidFood || '', '', c.litterLocation || '', '', '', c.cleaningSupply || '', c.medication || '',
-    c.vetEmergency || '', c.keyReturn || '', c.doorBalconyWindow || '', c.hidingPlace || '',
-    c.specialInstruction || '', c.notes || '', c.water || '', c.medication || ''
-  ];
-  if (foundRow) sh.getRange(foundRow, 1, 1, rowData.length).setValues([rowData]);
-  else sh.appendRow(rowData);
+  const foundRow = findRowById_(sh, data.id, 2);
+
+  let row = new Array(WIDTH).fill('');
+  if (foundRow) row = sh.getRange(foundRow, 1, 1, WIDTH).getValues()[0];
+
+  // index ตามหัวคอลัมน์ในชีต PetCareLog (A=0)
+  // เขียนเฉพาะเมื่อค่าเปลี่ยนจริง (คง type เดิม เช่น checkbox TRUE/FALSE หรือวันที่)
+  const set = (i, v) => {
+    if (v === undefined) return;
+    if (toText_(row[i]).toLowerCase() === String(v).trim().toLowerCase()) return;
+    const cur = row[i];
+    if (typeof cur === 'boolean' && /^(true|false)$/i.test(String(v).trim())) row[i] = /^true$/i.test(String(v).trim());
+    else row[i] = v;
+  };
+  row[0] = toText_(row[0]) || c.logId || newId_(sh);
+  row[1] = data.id;
+  set(2, data.room);                 // Address / unit
+  set(3, c.visitDates);              // Visit date(s)
+  set(4, c.timeOfDay);               // Time of the day
+  set(5, c.wetFood);                 // Wet food
+  set(6, c.wetFoodBrand);            // Brand/flavour/amount/location
+  set(8, c.dryFood);                 // Dry food
+  set(9, c.water);                   // Water (location + refill)
+  set(10, c.treat);                  // Treat
+  set(11, c.avoidFood);              // Avoid food?
+  set(13, c.litterLocation);         // Litter (location)
+  set(15, c.litterTrashBin);         // LitterTrashBin
+  set(16, c.cleaningSupply);         // Cleaning Supply
+  set(17, c.medication);             // Medication
+  set(18, c.vetEmergency);           // Vet / Emergency
+  set(19, c.keyReturn);              // Key Return
+  set(20, c.doorBalconyWindow);      // Door / Balcony / Window
+  set(21, c.hidingPlace);            // Hiding place
+  set(22, c.specialInstruction);     // Special Instruction
+  set(23, c.notes);                  // Notes
+  if (c.water !== undefined && toText_(row[24])) row[24] = c.water;           // Water (คอลัมน์ซ้ำ)
+  if (c.medication !== undefined && toText_(row[25])) row[25] = c.medication; // Medication (คอลัมน์ซ้ำ)
+
+  if (foundRow) sh.getRange(foundRow, 1, 1, WIDTH).setValues([row]);
+  else sh.appendRow(row);
 }
 
 function addAnimal(data) {
   if (!data || !data.name) throw new Error('กรุณากรอกชื่อสัตว์เลี้ยง');
-  const ss = ss_();
-  let sh = ss.getSheetByName(CONFIG.SHEETS.PETS) || ss.getSheetByName('Animals');
-  
-  const id = 'PET-' + String(Math.floor(1000 + Math.random() * 9000));
-  let imagePath = '';
-
-  if (data.image && data.image.base64) {
-    const bytes = Utilities.base64Decode(data.image.base64);
-    const blob = Utilities.newBlob(bytes, data.image.mimeType || 'image/jpeg', id + '.' + data.image.fileName);
-    const file = DriveApp.getFolderById(CONFIG.ANIMALS_LOVER_FOLDER_ID).createFile(blob);
-    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
-    imagePath = 'Animals Lover_Images/' + file.getName();
-  }
-
-  sh.appendRow([id, data.name, data.category || 'Cat', imagePath, data.owner || '', data.location || '', data.room || '', '']);
-  data.id = id;
-  savePetCareLog_(data);
-  SpreadsheetApp.flush();
-  return { ok: true, pets: getPetSitterData() };
+  return withLock_(() => {
+    const ss = ss_();
+    const sh = ss.getSheetByName(CONFIG.SHEETS.PETS) || ss.getSheetByName('Animals');
+    const id = newId_(sh);
+    let imagePath = '';
+    if (data.image && data.image.base64) {
+      const fileName = id + '.Picture.' + Date.now() + '.' + fileExt_(data.image.fileName, data.image.mimeType);
+      const file = saveImageToFolder_(data.image, CONFIG.ANIMALS_LOVER_FOLDER_ID, fileName);
+      imagePath = 'Animals Lover_Images/' + file.getName();
+    }
+    sh.appendRow([id, data.name, data.category || 'Cat', imagePath, data.owner || '', data.location || '', data.room || '', '']);
+    data.id = id;
+    savePetCareLog_(data);
+    SpreadsheetApp.flush();
+    return { ok: true, pets: getPetSitterData() };
+  });
 }
 
 function getPetExtraPhotos(petId) {
@@ -508,123 +555,99 @@ function getPetExtraPhotos(petId) {
 }
 
 function uploadExtraPhoto(data) {
-  if (!data || !data.petId || !data.image) throw new Error('ข้อมูลไม่ครบถ้วน');
-  const ss = ss_();
-  let sh = ss.getSheetByName(CONFIG.SHEETS.PHOTOS);
-  if (!sh) sh = ss.insertSheet(CONFIG.SHEETS.PHOTOS);
-
-  const photoId = Math.random().toString(16).substring(2, 10);
-  const bytes = Utilities.base64Decode(data.image.base64);
-  const photoName = photoId + '.Photo.' + Math.floor(100000 + Math.random() * 900000) + '.jpg';
-  
-  const blob = Utilities.newBlob(bytes, data.image.mimeType || 'image/jpeg', photoName);
-  const file = DriveApp.getFolderById(CONFIG.ANIMAL_PHOTOS_FOLDER_ID).createFile(blob);
-  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
-
-  const photoPath = 'AnimalPhotos_Images/' + photoName;
-  sh.appendRow([photoId, data.petId, photoPath]);
-  SpreadsheetApp.flush();
-
+  if (!data || !data.petId || !data.image || !data.image.base64) throw new Error('ข้อมูลไม่ครบถ้วน');
+  withLock_(() => {
+    const ss = ss_();
+    let sh = ss.getSheetByName(CONFIG.SHEETS.PHOTOS);
+    if (!sh) { sh = ss.insertSheet(CONFIG.SHEETS.PHOTOS); sh.appendRow(['PhotoID', 'AnimalID', 'Photo']); }
+    const photoId = newId_(sh);
+    const photoName = photoId + '.Photo.' + Date.now() + '.' + fileExt_(data.image.fileName, data.image.mimeType);
+    saveImageToFolder_(data.image, CONFIG.ANIMAL_PHOTOS_FOLDER_ID, photoName);
+    sh.appendRow([photoId, data.petId, 'AnimalPhotos_Images/' + photoName]);
+    SpreadsheetApp.flush();
+  });
+  cachedExtraMap = null;
   return { ok: true, photos: getPetExtraPhotos(data.petId) };
 }
 
 function getPetJobs(petId) {
   const ss = ss_();
-  let sh = ss.getSheetByName(CONFIG.SHEETS.JOBS);
+  const sh = ss.getSheetByName(CONFIG.SHEETS.JOBS);
   if (!sh) return [];
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
-  const values = sh.getRange(2, 1, lastRow - 1, 10).getValues();
+  const values = sh.getRange(2, 1, lastRow - 1, 12).getValues();
   const out = [];
   values.forEach((r, idx) => {
-    if (petId && String(toText_(r[1])).toLowerCase() === String(petId).toLowerCase()) {
-      const price = toNumber_(r[6]);
-      const tip = toNumber_(r[7]);
-      const pickupPrice = toNumber_(r[8]);
-      const cost = toNumber_(r[9]);
-      const netTotal = getJobNetTotal_(r);
-
+    if (petId && toText_(r[1]).toLowerCase() === String(petId).toLowerCase()) {
       out.push({
         jobId: toText_(r[0]) || ('job-' + (idx + 2)),
         petId: toText_(r[1]),
         type: toText_(r[2]) || 'Dropin Visit',
         startDate: fmtDate_(r[4]),
         endDate: fmtDate_(r[5]),
-        price: price,
-        tip: tip,
-        pickupPrice: pickupPrice,
-        cost: cost,
-        netTotal: netTotal
+        price: toNumber_(r[6]),
+        tip: toNumber_(r[7]),
+        pickupPrice: toNumber_(r[8]),
+        cost: toNumber_(r[9]),
+        source: toText_(r[10]),
+        note: toText_(r[11]),
+        netTotal: getJobNetTotal_(r)
       });
     }
   });
-  out.sort((a, b) => new Date(b.startDate || '1970-01-01') - new Date(a.startDate || '1970-01-01'));
+  out.sort((a, b) => (b.startDate || '1970-01-01').localeCompare(a.startDate || '1970-01-01'));
   return out;
 }
 
 function saveJob(data) {
   if (!data || !data.petId) throw new Error('ข้อมูลสัตว์เลี้ยงไม่ครบถ้วน');
-  const ss = ss_();
-  let sh = ss.getSheetByName(CONFIG.SHEETS.JOBS);
-  if (!sh) sh = ss.insertSheet(CONFIG.SHEETS.JOBS);
-
-  const jobId = data.jobId || Math.random().toString(16).substring(2, 10);
-  const price = toNumber_(data.price);
-  const tip = toNumber_(data.tip);
-  const pickupPrice = toNumber_(data.pickupPrice);
-  const cost = toNumber_(data.cost);
-
-  let foundRow = 0;
-  if (data.jobId && sh.getLastRow() >= 2) {
-    const ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
-    for (let i = 0; i < ids.length; i++) {
-      if (toText_(ids[i][0]) === String(data.jobId)) {
-        foundRow = i + 2;
-        break;
-      }
+  if (!data.startDate) throw new Error('กรุณาเลือกวันเริ่มงาน');
+  const endDate = data.endDate || data.startDate;
+  if (endDate < data.startDate) throw new Error('วันสิ้นสุดต้องไม่ก่อนวันเริ่มงาน');
+  withLock_(() => {
+    const ss = ss_();
+    let sh = ss.getSheetByName(CONFIG.SHEETS.JOBS);
+    if (!sh) {
+      sh = ss.insertSheet(CONFIG.SHEETS.JOBS);
+      sh.appendRow(['JobID', 'AnimalID', 'ServiceType', 'Sessions', 'Date From', 'Date To', 'Price', 'Tip', 'Pick up Price', 'Cost', 'Source', 'Note']);
     }
-  }
-
-  if (foundRow > 0) {
-    sh.getRange(foundRow, 2).setValue(data.petId);
-    sh.getRange(foundRow, 3).setValue(data.serviceType || 'Dropin Visit');
-    sh.getRange(foundRow, 4).setValue(1);
-    sh.getRange(foundRow, 5).setValue(data.startDate || '');
-    sh.getRange(foundRow, 6).setValue(data.endDate || '');
-    sh.getRange(foundRow, 7).setValue(price);
-    sh.getRange(foundRow, 8).setValue(tip);
-    sh.getRange(foundRow, 9).setValue(pickupPrice);
-    sh.getRange(foundRow, 10).setValue(cost);
-  } else {
-    sh.appendRow([jobId, data.petId, data.serviceType || 'Dropin Visit', 1, data.startDate || '', data.endDate || '', price, tip, pickupPrice, cost]);
-  }
-
-  SpreadsheetApp.flush();
+    const price = toNumber_(data.price), tip = toNumber_(data.tip), pickup = toNumber_(data.pickupPrice), cost = toNumber_(data.cost);
+    const foundRow = data.jobId ? findRowById_(sh, data.jobId, 1) : 0;
+    if (foundRow) {
+      // ไม่แตะคอลัมน์ Sessions (D) และ Source (K) ของเดิม
+      sh.getRange(foundRow, 2, 1, 2).setValues([[data.petId, data.serviceType || 'Dropin Visit']]);
+      sh.getRange(foundRow, 5, 1, 6).setValues([[data.startDate, endDate, price, tip, pickup, cost]]);
+      if (data.note !== undefined) sh.getRange(foundRow, 12).setValue(data.note || '');
+    } else {
+      sh.appendRow([newId_(sh), data.petId, data.serviceType || 'Dropin Visit', 1, data.startDate, endDate, price, tip, pickup, cost, '', data.note || '']);
+    }
+    SpreadsheetApp.flush();
+  });
   return { ok: true, jobs: getPetJobs(data.petId), pets: getPetSitterData() };
 }
 
 function getProducts() {
   const ss = ss_();
-  let sh = ss.getSheetByName(CONFIG.SHEETS.PRODUCTS);
+  const sh = ss.getSheetByName(CONFIG.SHEETS.PRODUCTS);
   if (!sh) return [];
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return [];
-  const values = sh.getRange(2, 1, lastRow - 1, 9).getValues();
-  const fileMap = getProductsFileMap_(); // ใช้ฟังก์ชันสแกนโฟลเดอร์สินค้าโดยเฉพาะ
+  const values = sh.getRange(2, 1, lastRow - 1, 10).getValues();
+  const fileMap = getProductsFileMap_();
   const out = [];
-
   values.forEach((r, idx) => {
     const id = toText_(r[0]) || ('row-' + (idx + 2));
     const name = toText_(r[1]);
     if (!name && !toText_(r[0])) return;
-    const imageUrl = resolveCoverPhotoUrl_(toText_(r[2]), fileMap, id);
     const saleDate = fmtDate_(r[7]);
     const salePrice = toNumber_(r[8]);
-
     out.push({
-      id: id, name: name, image: imageUrl, startDate: fmtDate_(r[3]),
-      cost: toNumber_(r[4]), postDate: fmtDate_(r[5]), postPrice: toNumber_(r[6]),
-      saleDate: saleDate, salePrice: salePrice, sold: !!saleDate || salePrice > 0
+      id: id, name: name, image: resolveCoverPhotoUrl_(toText_(r[2]), fileMap, id),
+      startDate: fmtDate_(r[3]), cost: toNumber_(r[4]),
+      postDate: fmtDate_(r[5]), postPrice: toNumber_(r[6]),
+      saleDate: saleDate, salePrice: salePrice, note: toText_(r[9]),
+      sold: !!saleDate || salePrice > 0
     });
   });
   return out.reverse();
@@ -632,54 +655,58 @@ function getProducts() {
 
 function addProduct(data) {
   if (!data || !data.name) throw new Error('กรุณากรอกชื่อสินค้า');
-  const ss = ss_();
-  let sh = ss.getSheetByName(CONFIG.SHEETS.PRODUCTS);
-  const imageUrl = data.image && data.image.base64 ? uploadFileToDrive(data.image.base64, data.image.mimeType, data.image.fileName) : '';
-  sh.appendRow([String(Math.floor(10000000 + Math.random() * 90000000)), data.name, imageUrl, data.startDate || '', toNumber_(data.cost), data.postDate || '', toNumber_(data.postPrice), '', '']);
-  SpreadsheetApp.flush();
+  withLock_(() => {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.PRODUCTS);
+    const id = newId_(sh);
+    const imagePath = (data.image && data.image.base64) ? uploadProductImage_(data.image, id) : '';
+    const sold = !!data.sold;
+    sh.appendRow([
+      id, data.name, imagePath, data.startDate || '', toNumber_(data.cost), data.postDate || '', toNumber_(data.postPrice),
+      sold ? (data.saleDate || fmtDate_(new Date())) : '', sold ? toNumber_(data.salePrice) : '', data.note || ''
+    ]);
+    SpreadsheetApp.flush();
+  });
   return { ok: true, products: getProducts() };
 }
 
+// แก้ไขสินค้าได้ทุกช่อง ทั้งที่ขายแล้วและยังไม่ขาย (ติ๊ก sold=false เพื่อยกเลิกสถานะขายแล้ว)
 function updateProduct(data) {
   if (!data || !data.id) throw new Error('ไม่พบ ID สินค้า');
-  const ss = ss_();
-  let sh = ss.getSheetByName(CONFIG.SHEETS.PRODUCTS);
-  const lastRow = sh.getLastRow();
-  if (lastRow >= 2) {
-    const ids = sh.getRange(2, 1, lastRow - 1, 1).getValues();
-    for (let i = 0; i < ids.length; i++) {
-      if (toText_(ids[i][0]) === String(data.id)) {
-        const row = i + 2;
-        sh.getRange(row, 2).setValue(data.name || '');
-        sh.getRange(row, 5).setValue(toNumber_(data.cost));
-        sh.getRange(row, 7).setValue(toNumber_(data.postPrice));
-        if (data.image && data.image.base64) {
-          sh.getRange(row, 3).setValue(uploadFileToDrive(data.image.base64, data.image.mimeType, data.image.fileName));
-        }
-        break;
-      }
-    }
-  }
-  SpreadsheetApp.flush();
+  if (!data.name) throw new Error('กรุณากรอกชื่อสินค้า');
+  withLock_(() => {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.PRODUCTS);
+    const row = findRowById_(sh, data.id, 1);
+    if (!row) throw new Error('ไม่พบสินค้า ID: ' + data.id + ' ในชีต');
+    sh.getRange(row, 2).setValue(data.name);
+    sh.getRange(row, 4, 1, 4).setValues([[data.startDate || '', toNumber_(data.cost), data.postDate || '', toNumber_(data.postPrice)]]);
+    if (data.sold) sh.getRange(row, 8, 1, 2).setValues([[data.saleDate || fmtDate_(new Date()), toNumber_(data.salePrice)]]);
+    else sh.getRange(row, 8, 1, 2).clearContent();
+    sh.getRange(row, 10).setValue(data.note || '');
+    if (data.image && data.image.base64) sh.getRange(row, 3).setValue(uploadProductImage_(data.image, data.id));
+    SpreadsheetApp.flush();
+  });
   return { ok: true, products: getProducts() };
 }
 
 function markAsSold(id, salePrice, saleDate) {
-  const ss = ss_();
-  let sh = ss.getSheetByName(CONFIG.SHEETS.PRODUCTS);
-  const lastRow = sh.getLastRow();
-  if (lastRow >= 2) {
-    const ids = sh.getRange(2, 1, lastRow - 1, 1).getValues();
-    for (let i = 0; i < ids.length; i++) {
-      if (toText_(ids[i][0]) === String(id)) {
-        const row = i + 2;
-        sh.getRange(row, 8).setValue(saleDate);
-        sh.getRange(row, 9).setValue(toNumber_(salePrice));
-        break;
-      }
-    }
-  }
-  SpreadsheetApp.flush();
+  withLock_(() => {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.PRODUCTS);
+    const row = findRowById_(sh, id, 1);
+    if (!row) throw new Error('ไม่พบสินค้า ID: ' + id);
+    sh.getRange(row, 8, 1, 2).setValues([[saleDate || fmtDate_(new Date()), toNumber_(salePrice)]]);
+    SpreadsheetApp.flush();
+  });
+  return { ok: true, products: getProducts() };
+}
+
+function deleteProduct(id) {
+  withLock_(() => {
+    const sh = ss_().getSheetByName(CONFIG.SHEETS.PRODUCTS);
+    const row = findRowById_(sh, id, 1);
+    if (!row) throw new Error('ไม่พบสินค้า ID: ' + id);
+    sh.deleteRow(row);
+    SpreadsheetApp.flush();
+  });
   return { ok: true, products: getProducts() };
 }
 
@@ -783,27 +810,34 @@ function getPokerData() {
 
 function addPokerBatchResults(payload) {
   if (!payload || !payload.rows || !payload.rows.length) throw new Error('ไม่พบข้อมูลผู้เล่น');
-  const sh = getPokerSheet_();
-  const date = payload.date || fmtDate_(new Date());
-  const sessionId = payload.sessionId || '1';
-
-  payload.rows.forEach(row => {
-    if (!row.player) return;
-    const buyin = toNumber_(row.buyin);
-    const cashedOut = toNumber_(row.cashedOut);
-    const lossGain = cashedOut - buyin;
-    sh.appendRow([date, sessionId, row.player, buyin, cashedOut, lossGain, lossGain / 100]);
+  withLock_(() => {
+    const sh = getPokerSheet_();
+    const date = payload.date || fmtDate_(new Date());
+    const sessionId = payload.sessionId || '1';
+    const rows = [];
+    payload.rows.forEach(row => {
+      if (!row.player) return;
+      const buyin = toNumber_(row.buyin);
+      const cashedOut = toNumber_(row.cashedOut);
+      const lossGain = cashedOut - buyin;
+      rows.push([date, sessionId, String(row.player).trim(), buyin, cashedOut, lossGain, lossGain / 100]);
+    });
+    if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, 7).setValues(rows);
+    SpreadsheetApp.flush();
   });
-
-  SpreadsheetApp.flush();
   return { ok: true, poker: getPokerData() };
 }
 
+// อัปโหลดรูปสินค้า ตั้งชื่อแบบเดิม "<ProductID>.Picture.<เวลา>.jpg" แล้วคืน path แบบเดียวกับข้อมูลเดิม
+function uploadProductImage_(image, productId) {
+  const fileName = productId + '.Picture.' + Date.now() + '.' + fileExt_(image.fileName, image.mimeType);
+  const file = saveImageToFolder_(image, CONFIG.PRODUCTS_FOLDER_ID, fileName);
+  cachedProductsMap = null;
+  return 'https://lh3.googleusercontent.com/d/' + file.getId();
+}
+
+// เผื่อโค้ดเก่าเรียกใช้
 function uploadFileToDrive(base64Data, mimeType, fileName) {
   if (!base64Data) return '';
-  const bytes = Utilities.base64Decode(base64Data);
-  const blob = Utilities.newBlob(bytes, mimeType || 'image/jpeg', Date.now() + '_' + fileName);
-  const file = DriveApp.getFolderById(CONFIG.PRODUCTS_FOLDER_ID).createFile(blob); // อัปโหลดไปที่โฟลเดอร์สินค้าโดยเฉพาะ
-  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
-  return 'https://lh3.googleusercontent.com/d/' + file.getId();
+  return uploadProductImage_({ base64: base64Data, mimeType: mimeType, fileName: fileName }, String(Date.now()));
 }
