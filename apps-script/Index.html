@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Pet Sitter, Inventory & Poker Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Noto Sans Thai', system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+    .fade-in { animation: fade .25s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .spinner { border: 3px solid #e5e7eb; border-top-color: #4f46e5; border-radius: 9999px; width: 32px; height: 32px; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 pb-20">
+
+  <!-- Header -->
+  <header class="bg-indigo-600 text-white sticky top-0 z-30 shadow">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+      <h1 class="text-lg font-bold">🐾 Pet Sitter, Inventory & Poker</h1>
+      <button onclick="refreshData()" class="text-sm bg-white/20 hover:bg-white/30 rounded-full px-3 py-1">รีเฟรช</button>
+    </div>
+    <div class="max-w-4xl mx-auto px-4 flex border-t border-indigo-500/40 text-xs sm:text-sm">
+      <button id="tab-pets" onclick="switchTab('pets')" class="flex-1 py-2.5 text-center font-semibold border-b-2 border-white text-white">🐱 Pet Sitter</button>
+      <button id="tab-inventory" onclick="switchTab('inventory')" class="flex-1 py-2.5 text-center font-semibold border-b-2 border-transparent text-indigo-200 hover:text-white">📦 คลังสินค้า</button>
+      <button id="tab-dashboard" onclick="switchTab('dashboard')" class="flex-1 py-2.5 text-center font-semibold border-b-2 border-transparent text-indigo-200 hover:text-white">📊 ภาพรวมกำไร</button>
+      <button id="tab-poker" onclick="switchTab('poker')" class="flex-1 py-2.5 text-center font-semibold border-b-2 border-transparent text-indigo-200 hover:text-white">♠️ Poker Tracker</button>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 py-4">
+
+    <!-- PAGE 1: Pet Sitter List -->
+    <div id="page-pets" class="space-y-3">
+      <div class="flex items-center justify-between mb-1">
+        <h2 class="text-base font-bold">🐾 รายชื่อสัตว์เลี้ยง & งานดูแล</h2>
+        <button onclick="openAddAnimalModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-full px-3.5 py-1.5 shadow flex items-center gap-1 transition-colors">
+          <span>+</span> Add New Animal
+        </button>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 space-y-2">
+        <input type="search" id="petSearchBox" placeholder="🔍 ค้นหาชื่อสัตว์เลี้ยง, เจ้าของ, ที่อยู่" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+        <div class="inline-flex w-full rounded-full bg-slate-100 p-1 text-xs sm:text-sm">
+          <button id="pflt-all" onclick="setPetFilter('all')" class="flex-1 py-1.5 rounded-full font-medium bg-white shadow text-indigo-700">All</button>
+          <button id="pflt-dropin" onclick="setPetFilter('dropin')" class="flex-1 py-1.5 rounded-full font-medium text-slate-600">Drop in</button>
+          <button id="pflt-boarding" onclick="setPetFilter('boarding')" class="flex-1 py-1.5 rounded-full font-medium text-slate-600">Boarding</button>
+          <button id="pflt-walking" onclick="setPetFilter('walking')" class="flex-1 py-1.5 rounded-full font-medium text-slate-600">Walking</button>
+        </div>
+      </div>
+
+      <div id="petCount" class="text-xs text-slate-500 text-right"></div>
+      <div id="petList" class="space-y-3">
+        <div class="flex justify-center py-10"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- PAGE 2: Inventory List -->
+    <div id="page-inventory" class="hidden space-y-3">
+      <div class="flex items-center justify-between mb-1">
+        <h2 class="text-base font-bold">📋 รายการสินค้าทั้งหมด</h2>
+        <button onclick="openAddProductModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-full px-3.5 py-1.5 shadow flex items-center gap-1 transition-colors">
+          <span>+</span> เพิ่มสินค้า
+        </button>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 space-y-2">
+        <input type="search" id="searchBox" placeholder="🔍 ค้นหาชื่อสินค้า หรือ ID" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+        <div class="inline-flex w-full rounded-full bg-slate-100 p-1 text-sm">
+          <button id="flt-all" onclick="setFilter('all')" class="flex-1 px-2 py-1.5 rounded-full font-medium text-xs sm:text-sm bg-white shadow text-indigo-700">ทั้งหมด</button>
+          <button id="flt-open" onclick="setFilter('open')" class="flex-1 px-2 py-1.5 rounded-full font-medium text-xs sm:text-sm text-slate-600">ยังไม่ขาย</button>
+          <button id="flt-sold" onclick="setFilter('sold')" class="flex-1 px-2 py-1.5 rounded-full font-medium text-xs sm:text-sm text-slate-600">ขายแล้ว</button>
+        </div>
+      </div>
+
+      <div id="statusBox" class="hidden p-4 rounded-2xl text-sm mb-3"></div>
+      <div id="productCount" class="text-xs text-slate-500 text-right"></div>
+      <div id="productList" class="space-y-3">
+        <div class="flex justify-center py-10"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- PAGE 3: Dashboard & Profit Summary -->
+    <div id="page-dashboard" class="hidden space-y-4 fade-in">
+      <h2 class="text-base font-bold">📊 ภาพรวมกำไรสุทธิ (สกุลเงิน CAD)</h2>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="text-xs text-slate-500 font-medium">กำไรสุทธิรวมทั้งหมด</div>
+          <div id="kpiNetProfit" class="text-lg font-bold text-indigo-600 mt-0.5">$0.00 CAD</div>
+        </div>
+        <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="text-xs text-indigo-600 font-bold">🐾 กำไร Pet Sitter</div>
+          <div id="kpiPetProfit" class="text-lg font-bold text-indigo-700 mt-0.5">$0.00 CAD</div>
+        </div>
+        <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="text-xs text-emerald-600 font-bold">📦 กำไร Product Selling</div>
+          <div id="kpiProductProfit" class="text-lg font-bold text-emerald-700 mt-0.5">$0.00 CAD</div>
+        </div>
+        <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="text-xs text-slate-500 font-medium">สินค้าขายแล้ว</div>
+          <div id="kpiSoldCount" class="text-lg font-bold text-slate-800 mt-0.5">0 รายการ</div>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+          <h3 class="text-sm font-bold text-slate-700">📊 1. รายได้รวมทุกหมวดหมู่รายเดือน</h3>
+          <div class="relative w-full h-64"><canvas id="chartOverall"></canvas></div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+          <h3 class="text-sm font-bold text-indigo-700">🐾 2. รายได้งาน Pet Sitter รวมทั้งหมด</h3>
+          <div class="relative w-full h-56"><canvas id="chartPetSitter"></canvas></div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+            <h3 class="text-xs font-bold text-indigo-600">🏠 3. Drop in Visit</h3>
+            <div class="relative w-full h-48"><canvas id="chartDropin"></canvas></div>
+          </div>
+          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+            <h3 class="text-xs font-bold text-purple-600">🌙 4. Boarding (ฝากเลี้ยง)</h3>
+            <div class="relative w-full h-48"><canvas id="chartBoarding"></canvas></div>
+          </div>
+          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+            <h3 class="text-xs font-bold text-cyan-600">🐕 5. Walking (พาเดิน)</h3>
+            <div class="relative w-full h-48"><canvas id="chartWalking"></canvas></div>
+          </div>
+          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+            <h3 class="text-xs font-bold text-emerald-600">📦 6. Selling (ขายสินค้า)</h3>
+            <div class="relative w-full h-48"><canvas id="chartSelling"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 4: Poker Game Tracker -->
+    <div id="page-poker" class="hidden space-y-4 fade-in">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-bold">♠️ Poker Tracker & Multi-View Charts</h2>
+        <button onclick="openAddPokerModal()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-full px-3.5 py-1.5 shadow"><span>+</span> บันทึกผล Poker หลายคน</button>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-slate-700">เลือกวันที่ดูผล:</span>
+          <input type="date" id="pkFilterDate" onchange="renderPokerDashboard()" class="rounded-xl border border-slate-300 px-2 py-1">
+        </div>
+        <div class="text-slate-500 font-medium">อัตราแปลง: <b>100 Chips = C$1</b></div>
+      </div>
+
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+        <h3 class="text-xs font-bold text-slate-800">📊 Player Results Summary Table</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                <th class="p-2">Player</th>
+                <th class="p-2 text-right" id="pkColSelectedDay">Selected Day</th>
+                <th class="p-2 text-right" id="pkColSelectedMonth">Selected Month</th>
+                <th class="p-2 text-right" id="pkColSelectedYear">Selected Year</th>
+                <th class="p-2 text-right">All Time</th>
+              </tr>
+            </thead>
+            <tbody id="pkDashboardTbody" class="divide-y divide-slate-100">
+              <tr><td colspan="5" class="text-center py-4 text-slate-400">กำลังโหลดข้อมูล...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+          <h3 class="text-xs font-bold text-indigo-700" id="pkChartTitleDay">📈 กราฟรายวัน</h3>
+          <div class="relative w-full h-52"><canvas id="chartPokerDay"></canvas></div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+          <h3 class="text-xs font-bold text-emerald-700" id="pkChartTitleMonth">📈 กราฟรายเดือน</h3>
+          <div class="relative w-full h-52"><canvas id="chartPokerMonth"></canvas></div>
+        </div>
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+          <h3 class="text-xs font-bold text-purple-700" id="pkChartTitleYear">📈 กราฟรายปี</h3>
+          <div class="relative w-full h-52"><canvas id="chartPokerYear"></canvas></div>
+        </div>
+      </div>
+
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+        <h3 class="text-xs font-bold text-slate-800">📜 ประวัติการเล่นทั้งหมด (ชีต Poker)</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-800 text-white font-semibold">
+                <th class="p-2">Date</th>
+                <th class="p-2">Session ID</th>
+                <th class="p-2">Player</th>
+                <th class="p-2 text-right">Buyin</th>
+                <th class="p-2 text-right">Chips Cashed</th>
+                <th class="p-2 text-right">Loss / Gain</th>
+                <th class="p-2 text-right">Payout (CAD)</th>
+              </tr>
+            </thead>
+            <tbody id="pkRawTbody" class="divide-y divide-slate-100">
+              <tr><td colspan="7" class="text-center py-4 text-slate-400">กำลังโหลด...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Modal: Add / Edit Animal Full Form -->
+  <div id="addAnimalModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-2xl p-5 fade-in shadow-xl max-h-[90vh] overflow-y-auto space-y-3">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 id="animalModalTitle" class="text-lg font-bold">🐾 เพิ่มข้อมูลสัตว์เลี้ยงใหม่</h3>
+        <button onclick="closeAddAnimalModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+
+      <form id="addAnimalForm" class="space-y-3" autocomplete="off">
+        <input type="hidden" id="an_id">
+        <input type="hidden" id="cl_logId">
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium mb-1">ชื่อสัตว์เลี้ยง <span class="text-red-500">*</span></label>
+            <input type="text" id="an_name" required placeholder="เช่น Samsoon" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          </div>
+          <div>
+            <label class="block text-xs font-medium mb-1">หมวดหมู่</label>
+            <input type="text" id="an_category" placeholder="เช่น Cat, Dog" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium mb-1">ชื่อเจ้าของ</label>
+            <input type="text" id="an_owner" placeholder="ชื่อ / เบอร์ติดต่อ" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          </div>
+          <div>
+            <label class="block text-xs font-medium mb-1">รูปหน้าปก (Animals Lover)</label>
+            <input type="file" id="an_file" accept="image/*" class="w-full text-[10px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium mb-1">สถานที่ / Location</label>
+            <input type="text" id="an_location" placeholder="เช่น Burnaby" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          </div>
+          <div>
+            <label class="block text-xs font-medium mb-1">Address / Unit (ห้อง)</label>
+            <input type="text" id="an_room" placeholder="เช่น #402, Key 1234" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          </div>
+        </div>
+
+        <div class="border-t pt-2 space-y-2">
+          <div class="text-xs font-bold text-indigo-700">📋 รายละเอียดการดูแล (PetCareLog)</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[11px] text-slate-600 mb-1">Time of the day</label><input type="text" id="cl_timeOfDay" placeholder="Morning / Evening" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+            <div><label class="block text-[11px] text-slate-600 mb-1">Visit date(s)</label><input type="text" id="cl_visitDates" placeholder="2026-10-16" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[11px] text-slate-600 mb-1">Wet food (อาหารเปียก)</label><input type="text" id="cl_wetFood" placeholder="1/2 Can" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+            <div><label class="block text-[11px] text-slate-600 mb-1">Brand / Flavour</label><input type="text" id="cl_wetFoodBrand" placeholder="Fancy Feast Tuna" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[11px] text-slate-600 mb-1">Dry food (อาหารแห้ง)</label><input type="text" id="cl_dryFood" placeholder="1 Scoop" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+            <div><label class="block text-[11px] text-slate-600 mb-1">Water (น้ำ)</label><input type="text" id="cl_water" placeholder="Kitchen sink refill" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[11px] text-slate-600 mb-1">Treat (ขนม)</label><input type="text" id="cl_treat" placeholder="2 pcs Churu" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+            <div><label class="block text-[11px] text-slate-600 mb-1">Avoid food? (อาหารเลี่ยง)</label><input type="text" id="cl_avoidFood" placeholder="Chicken allergy" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[11px] text-slate-600 mb-1">Litter location</label><input type="text" id="cl_litterLocation" placeholder="Bathroom" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+            <div><label class="block text-[11px] text-slate-600 mb-1">Trash Bin Location</label><input type="text" id="cl_litterTrashBin" placeholder="Balcony" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[11px] text-slate-600 mb-1">Cleaning Supply</label><input type="text" id="cl_cleaningSupply" placeholder="Vacuum in closet" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+            <div><label class="block text-[11px] text-slate-600 mb-1">Medication</label><input type="text" id="cl_medication" placeholder="Pill 1 tab @ 8AM" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[11px] text-slate-600 mb-1">Vet / Emergency</label><input type="text" id="cl_vetEmergency" placeholder="VCA Clinic" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+            <div><label class="block text-[11px] text-slate-600 mb-1">Key Return</label><input type="text" id="cl_keyReturn" placeholder="Lockbox 1234" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[11px] text-slate-600 mb-1">Door / Balcony / Window</label><input type="text" id="cl_doorBalconyWindow" placeholder="Keep balcony closed" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+            <div><label class="block text-[11px] text-slate-600 mb-1">Hiding place</label><input type="text" id="cl_hidingPlace" placeholder="Under the bed" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
+          </div>
+          <div><label class="block text-[11px] text-slate-600 mb-1">Special Instruction</label><textarea id="cl_specialInstruction" rows="1" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></textarea></div>
+          <div><label class="block text-[11px] text-slate-600 mb-1">Notes</label><textarea id="cl_notes" rows="1" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></textarea></div>
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button type="button" onclick="closeAddAnimalModal()" class="flex-1 rounded-xl bg-slate-200 hover:bg-slate-300 font-medium py-2 text-xs">ยกเลิก</button>
+          <button type="submit" id="an_submitBtn" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 text-xs shadow">บันทึกข้อมูล</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: View & Add/Edit Pet Jobs -->
+  <div id="jobsModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-2xl p-5 fade-in shadow-xl max-h-[90vh] overflow-y-auto space-y-4">
+      <div class="flex justify-between items-center border-b pb-2">
+        <div>
+          <h3 id="jobModalPetName" class="text-lg font-bold">📅 Jobs & รูปภาพ</h3>
+          <p id="jobModalPetDetail" class="text-xs text-slate-500"></p>
+        </div>
+        <button onclick="closeJobsModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+
+      <div>
+        <div class="flex justify-between items-center mb-1.5">
+          <span class="text-xs font-bold text-slate-700">🖼️ รูปภาพเพิ่มเติม (AnimalPhotos)</span>
+          <label class="text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1 rounded-lg cursor-pointer shadow">
+            <span>+ เพิ่มรูปใหม่</span>
+            <input type="file" id="extraPhotoFile" accept="image/*" onchange="uploadExtraPhotoHandler(this)" class="hidden">
+          </label>
+        </div>
+        <div id="photoGallery" class="flex gap-2 overflow-x-auto pb-2 border-b border-slate-100 snap-x">
+          <div class="text-xs text-slate-400 py-2">กำลังโหลดรูปภาพ...</div>
+        </div>
+      </div>
+
+      <!-- Job Form (Add / Edit) -->
+      <form id="addJobForm" class="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
+        <div class="flex justify-between items-center">
+          <span id="jobFormTitle" class="text-xs font-bold text-indigo-700">➕ เพิ่ม Job งานรับดูแลใหม่</span>
+          <button type="button" id="cancelEditJobBtn" onclick="resetJobForm()" class="hidden text-[10px] text-red-500 font-semibold underline">ยกเลิกแก้ไข</button>
+        </div>
+        
+        <input type="hidden" id="j_jobId">
+        <input type="hidden" id="j_petId">
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-medium mb-1">ประเภทบริการ</label>
+            <select id="j_type" class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
+              <option value="Dropin Visit">Dropin Visit</option>
+              <option value="Boarding">Boarding</option>
+              <option value="Walking">Walking</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-medium mb-1">Price (ค่าบริการหลัก) <span class="text-red-500">*</span></label>
+            <input type="number" id="j_price" required min="0" step="0.01" value="0" class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="block text-[10px] font-medium mb-1">Tip (ทิป)</label>
+            <input type="number" id="j_tip" min="0" step="0.01" value="0" class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs">
+          </div>
+          <div>
+            <label class="block text-[10px] font-medium mb-1">Pickup Price</label>
+            <input type="number" id="j_pickupPrice" min="0" step="0.01" value="0" class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs">
+          </div>
+          <div>
+            <label class="block text-[10px] font-medium mb-1">Cost (ติดลบหักกำไร)</label>
+            <input type="number" id="j_cost" step="0.01" value="0" placeholder="-15" class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs text-red-600 font-semibold">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-medium mb-1">วันเริ่มงาน</label>
+            <input type="date" id="j_startDate" required class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs">
+          </div>
+          <div>
+            <label class="block text-[11px] font-medium mb-1">วันสิ้นสุด</label>
+            <input type="date" id="j_endDate" required class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs">
+          </div>
+        </div>
+        <div>
+          <label class="block text-[11px] font-medium mb-1">โน้ต</label>
+          <input type="text" id="j_note" class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs">
+        </div>
+
+        <button type="submit" id="j_submitBtn" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 text-xs shadow mt-1">
+          + บันทึก Job ใหม่
+        </button>
+      </form>
+
+      <div>
+        <div class="text-xs font-bold text-slate-700 mb-2">📜 ประวัติงานทั้งหมด</div>
+        <div id="jobsList" class="space-y-2">
+          <div class="flex justify-center py-4"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add / Edit Product -->
+  <div id="addProductModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-3">
+        <h3 id="productModalTitle" class="text-lg font-bold">✨ เพิ่มรายการสินค้าใหม่</h3>
+        <button onclick="closeAddProductModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+      <form id="addProductForm" class="space-y-3" autocomplete="off">
+        <input type="hidden" id="a_id">
+        <div><label class="block text-sm font-medium mb-1">ชื่อสินค้า <span class="text-red-500">*</span></label><input type="text" id="a_name" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+        <div>
+          <label class="block text-sm font-medium mb-1">รูปภาพสินค้า</label>
+          <div class="flex items-center gap-3">
+            <div id="a_preview" class="h-16 w-16 rounded-xl bg-slate-100 shrink-0 flex items-center justify-center text-xl overflow-hidden">📦</div>
+            <input type="file" id="a_file" accept="image/*" onchange="previewFile(this, 'a_preview')" class="w-full text-xs">
+          </div>
+          <p id="a_fileHint" class="hidden text-[11px] text-slate-500 mt-1">เลือกรูปใหม่เฉพาะเมื่อต้องการเปลี่ยนรูป</p>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="block text-sm font-medium mb-1">วันที่ซื้อ</label><input type="date" id="a_startDate" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+          <div><label class="block text-sm font-medium mb-1">ต้นทุน (CAD)</label><input type="number" id="a_cost" min="0" step="0.01" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="block text-sm font-medium mb-1">วันที่ลงขาย</label><input type="date" id="a_postDate" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+          <div><label class="block text-sm font-medium mb-1">ราคาตั้งขาย (CAD)</label><input type="number" id="a_postPrice" min="0" step="0.01" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+        </div>
+        <div><label class="block text-sm font-medium mb-1">โน้ต</label><input type="text" id="a_note" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+          <label class="flex items-center gap-2 text-sm font-semibold text-emerald-800 cursor-pointer">
+            <input type="checkbox" id="a_sold" onchange="toggleSoldFields()" class="h-4 w-4 accent-emerald-600"> ขายแล้ว
+          </label>
+          <div id="a_soldFields" class="hidden grid grid-cols-2 gap-2">
+            <div><label class="block text-xs font-medium mb-1">วันที่ขาย</label><input type="date" id="a_saleDate" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+            <div><label class="block text-xs font-medium mb-1">ราคาขายจริง (CAD)</label><input type="number" id="a_salePrice" min="0" step="0.01" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+          </div>
+          <p class="text-[11px] text-slate-500">เอาติ๊กออก = เปลี่ยนกลับเป็น "ยังไม่ขาย" (ล้างวันที่และราคาขาย)</p>
+        </div>
+
+        <div class="flex gap-2 pt-3">
+          <button type="button" onclick="closeAddProductModal()" class="flex-1 rounded-xl bg-slate-200 py-2.5 text-sm">ยกเลิก</button>
+          <button type="submit" id="a_submitBtn" class="flex-1 rounded-xl bg-indigo-600 text-white py-2.5 text-sm">บันทึก</button>
+        </div>
+        <button type="button" id="a_deleteBtn" onclick="deleteProductHandler()" class="hidden w-full text-xs text-red-600 font-semibold py-1.5 hover:underline">🗑️ ลบสินค้านี้</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="soldModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl">
+      <h3 class="text-lg font-bold mb-1">💰 บันทึกการขาย</h3>
+      <p id="soldItemName" class="text-sm text-slate-500 mb-4"></p>
+      <form id="soldForm" class="space-y-3">
+        <input type="hidden" id="s_id">
+        <div><label class="block text-sm font-medium mb-1">ราคาขายจริง (CAD) <span class="text-red-500">*</span></label><input type="number" id="s_price" required min="0" step="0.01" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+        <div><label class="block text-sm font-medium mb-1">วันที่ขาย <span class="text-red-500">*</span></label><input type="date" id="s_date" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"></div>
+        <div class="flex gap-2 pt-2">
+          <button type="button" onclick="closeSoldModal()" class="flex-1 rounded-xl bg-slate-200 py-2.5 text-sm">ยกเลิก</button>
+          <button type="submit" id="s_submitBtn" class="flex-1 rounded-xl bg-emerald-600 text-white py-2.5 text-sm">บันทึก</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Batch Add Poker Results -->
+  <div id="addPokerModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-2xl rounded-2xl p-5 fade-in shadow-xl max-h-[90vh] overflow-y-auto space-y-3">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="text-lg font-bold">♠️ บันทึกผล Poker แบบตารางหลายคน</h3>
+        <button onclick="closeAddPokerModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border">
+        <div>
+          <label class="block text-xs font-medium mb-1">วันที่เล่น <span class="text-red-500">*</span></label>
+          <input type="date" id="pk_modalDate" class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs">
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1">Session ID</label>
+          <input type="text" id="pk_modalSessionId" value="1" class="w-full rounded-xl border border-slate-300 px-2 py-1.5 text-xs">
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-bold text-slate-700">รายชื่อผู้เล่นในรอบนี้</span>
+          <button type="button" onclick="addPokerRow()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1 rounded-lg">+ เพิ่มแถวผู้เล่น</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700">
+                <th class="p-1.5 text-left">ชื่อผู้เล่น (Player)</th>
+                <th class="p-1.5 text-right w-24">Buyin</th>
+                <th class="p-1.5 text-right w-28">Chips Cashed</th>
+                <th class="p-1.5 text-center w-12">ลบ</th>
+              </tr>
+            </thead>
+            <tbody id="pkBatchTbody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2 border-t">
+        <button type="button" onclick="closeAddPokerModal()" class="flex-1 rounded-xl bg-slate-200 hover:bg-slate-300 font-medium py-2 text-xs">ยกเลิก</button>
+        <button type="button" id="pk_submitBtn" onclick="submitPokerBatch()" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 text-xs shadow">บันทึกทั้งหมดลงชีต</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: รหัสเข้าใช้ (เฉพาะตอนเปิดจาก GitHub Pages) -->
+  <div id="loginModal" class="hidden fixed inset-0 z-[60] bg-indigo-900/70 flex items-center justify-center p-4">
+    <form onsubmit="submitLogin(event)" class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3">
+      <h3 class="text-lg font-bold">🔐 เข้าใช้ VanBiz</h3>
+      <p class="text-xs text-slate-500">ใส่รหัสเข้าใช้ (API_KEY) ครั้งเดียว เครื่องนี้จะจำไว้</p>
+      <input type="password" id="loginKey" autocomplete="current-password" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="รหัสเข้าใช้">
+      <p id="loginMsg" class="text-xs text-red-600"></p>
+      <button type="submit" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 text-sm">เข้าใช้</button>
+    </form>
+  </div>
+
+<script>
+var petsData = [];
+var productsData = [];
+var currentPetFilter = 'all';
+var currentFilter = 'all';
+var chartInstances = {};
+var currentJobsCache = [];
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+function money(n) { var v = Number(n || 0); return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' CAD'; }
+function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+
+// ลิงก์ Apps Script (/exec) ที่ต่อกับชีต Van BIz — ใช้ตอนเปิดจาก GitHub Pages
+var API_URL = 'https://script.google.com/macros/s/AKfycbzDEw5Mm1EoixwNzczcLwwkKGy_xqP6X1QbmqqXN3dXmKltbyrw3_MhyyK47LwFQyusfA/exec';
+var IN_APPS_SCRIPT = !!(window.google && google.script && google.script.run);
+var KEY_STORE = 'vanbiz_api_key';
+
+function getApiKey() { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return window._vbKey || ''; } }
+function setApiKey(k) { try { localStorage.setItem(KEY_STORE, k); } catch (e) { window._vbKey = k; } }
+
+var pendingAfterLogin = [];
+function showLogin(msg) {
+  $('loginMsg').textContent = msg || '';
+  $('loginModal').classList.remove('hidden');
+  setTimeout(function() { $('loginKey').focus(); }, 50);
+}
+function submitLogin(e) {
+  if (e) e.preventDefault();
+  var k = $('loginKey').value.trim();
+  if (!k) return;
+  setApiKey(k);
+  $('loginModal').classList.add('hidden');
+  var q = pendingAfterLogin; pendingAfterLogin = [];
+  if (q.length) q.forEach(function(f) { f(); }); else refreshData();
+}
+
+// เรียกฟังก์ชันฝั่ง Apps Script พร้อมจัดการ error ทุกครั้ง (ไม่ให้หมุนค้าง)
+// - เปิดจากลิงก์ Apps Script: ใช้ google.script.run
+// - เปิดจาก GitHub Pages: ส่ง fetch ไปที่ API_URL พร้อมรหัสเข้าใช้
+function callServer(fnName, args, onOk, onFail) {
+  var fail = function(msg) { if (onFail) onFail(msg); else alert('เกิดข้อผิดพลาด: ' + msg); };
+  if (!IN_APPS_SCRIPT) {
+    var key = getApiKey();
+    if (!key) { pendingAfterLogin.push(function() { callServer(fnName, args, onOk, onFail); }); showLogin(); return; }
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // text/plain = ไม่มี CORS preflight
+      body: JSON.stringify({ action: fnName, args: args || [], key: key })
+    })
+      .then(function(r) { return r.text(); })
+      .then(function(t) {
+        var res;
+        try { res = JSON.parse(t); } catch (e) { throw new Error('เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง (ตรวจว่า Deploy เป็น New version และ Who has access = Anyone แล้ว)'); }
+        if (res.ok) { if (onOk) onOk(res.data); return; }
+        if (res.error === 'UNAUTHORIZED') {
+          setApiKey('');
+          pendingAfterLogin.push(function() { callServer(fnName, args, onOk, onFail); });
+          showLogin('รหัสไม่ถูกต้อง ลองใหม่อีกครั้ง');
+          return;
+        }
+        fail(res.error);
+      })
+      .catch(function(err) { fail(err && err.message ? err.message : String(err)); });
+    return;
+  }
+  var runner = google.script.run
+    .withSuccessHandler(function(res) { if (onOk) onOk(res); })
+    .withFailureHandler(function(err) {
+      var msg = (err && err.message) ? err.message : String(err);
+      if (onFail) onFail(msg); else alert('เกิดข้อผิดพลาด: ' + msg);
+    });
+  runner[fnName].apply(runner, args || []);
+}
+
+function setBusy(btn, busy, label) {
+  if (!btn) return;
+  if (busy) { btn.dataset.label = btn.textContent; btn.disabled = true; btn.textContent = 'กำลังบันทึก...'; btn.classList.add('opacity-60'); }
+  else { btn.disabled = false; btn.textContent = label || btn.dataset.label || btn.textContent; btn.classList.remove('opacity-60'); }
+}
+
+function errorBox(msg) {
+  return '<div class="text-center text-sm text-red-600 py-6 bg-red-50 rounded-2xl border border-red-200">โหลดข้อมูลไม่สำเร็จ: ' + esc(msg) +
+    '<br><button onclick="refreshData()" class="mt-2 text-xs font-semibold underline">ลองใหม่</button></div>';
+}
+
+// อ่านรูปและย่อขนาด (ด้านยาวสุด 1600px, JPEG) ให้อัปโหลดเร็วและไม่เกินขนาดที่ Apps Script รับได้
+function readImage(file, cb) {
+  if (!file) return cb(null);
+  var reader = new FileReader();
+  reader.onerror = function() { alert('อ่านไฟล์รูปไม่ได้'); cb(null); };
+  reader.onload = function(evt) {
+    var dataUrl = evt.target.result;
+    var img = new Image();
+    img.onload = function() {
+      var max = 1600, w = img.width, h = img.height;
+      var scale = Math.min(1, max / Math.max(w, h));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      var out = canvas.toDataURL('image/jpeg', 0.85);
+      cb({ base64: out.split(',')[1], mimeType: 'image/jpeg', fileName: (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg' });
+    };
+    img.onerror = function() { cb({ base64: dataUrl.split(',')[1], mimeType: file.type || 'image/jpeg', fileName: file.name }); };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+}
+
+function previewFile(input, previewId) {
+  var box = $(previewId);
+  if (!box || !input.files || !input.files[0]) return;
+  var url = URL.createObjectURL(input.files[0]);
+  box.innerHTML = '<img src="' + url + '" class="h-full w-full object-cover">';
+}
+
+function findPet(id) { return petsData.find(function(x) { return String(x.id) === String(id); }); }
+
+function renderImage(url) {
+  if (url && typeof url === 'string' && url.indexOf('http') === 0) {
+    var fileId = '';
+    var match = url.match(/[-\w]{25,}/);
+    if (match) fileId = match[0];
+    
+    var primaryUrl = url;
+    var fallbackUrl = fileId ? 'https://drive.google.com/uc?export=view&id=' + fileId : url;
+
+    return '<img src="' + esc(primaryUrl) + '" ' +
+      'onerror="if(this.src!=\'' + esc(fallbackUrl) + '\'){this.src=\'' + esc(fallbackUrl) + '\';}else{this.onerror=null;this.parentNode.innerHTML=\'<div class=\\\'h-20 w-20 rounded-xl shrink-0 bg-slate-100 flex items-center justify-center text-2xl\\\'>🐾</div>\';}" ' +
+      'class="h-20 w-20 rounded-xl shrink-0 bg-slate-100 object-cover" referrerpolicy="no-referrer">';
+  }
+  return '<div class="h-20 w-20 rounded-xl shrink-0 bg-slate-100 flex items-center justify-center text-2xl">🐾</div>';
+}
+
+function switchTab(tab) {
+  ['pets', 'inventory', 'dashboard', 'poker'].forEach(function(t) {
+    $('page-' + t).classList.add('hidden');
+    $('tab-' + t).className = 'flex-1 py-2.5 text-center font-semibold border-b-2 border-transparent text-indigo-200 hover:text-white';
+  });
+  $('page-' + tab).classList.remove('hidden');
+  $('tab-' + tab).className = 'flex-1 py-2.5 text-center font-semibold border-b-2 border-white text-white';
+
+  if (tab === 'pets' && !petsData.length) loadPetData();
+  if (tab === 'inventory' && !productsData.length) loadProducts();
+  if (tab === 'dashboard') loadDashboard();
+  if (tab === 'poker') loadPoker();
+}
+
+function refreshData() {
+  petsData = []; productsData = [];
+  if (!$('page-pets').classList.contains('hidden')) loadPetData();
+  if (!$('page-inventory').classList.contains('hidden')) loadProducts();
+  if (!$('page-dashboard').classList.contains('hidden')) loadDashboard();
+  if (!$('page-poker').classList.contains('hidden')) loadPoker();
+}
+
+// === Pet Sitter Functions ===
+function loadPetData() {
+  if ($('petList')) $('petList').innerHTML = '<div class="flex justify-center py-10"><div class="spinner"></div></div>';
+  callServer('getPetSitterData', [], function(data) { petsData = data || []; renderPets(); },
+    function(msg) { if ($('petList')) $('petList').innerHTML = errorBox(msg); });
+}
+
+function setPetFilter(cat) {
+  currentPetFilter = cat;
+  ['all', 'dropin', 'boarding', 'walking'].forEach(function(k) {
+    var el = $('pflt-' + k);
+    if (el) el.className = (k === cat) ? 'flex-1 py-1.5 rounded-full font-medium bg-white shadow text-indigo-700' : 'flex-1 py-1.5 rounded-full font-medium text-slate-600';
+  });
+  renderPets();
+}
+
+function renderPets() {
+  var q = $('petSearchBox') ? $('petSearchBox').value.trim().toLowerCase() : '';
+  var list = petsData.filter(function(p) {
+    if (currentPetFilter !== 'all') {
+      var types = (p.serviceTypes || []).map(function(t) { return String(t).toLowerCase(); });
+      if (currentPetFilter === 'dropin' && !types.some(function(t) { return t.indexOf('drop') !== -1; })) return false;
+      if (currentPetFilter === 'boarding' && !types.some(function(t) { return t.indexOf('board') !== -1; })) return false;
+      if (currentPetFilter === 'walking' && !types.some(function(t) { return t.indexOf('walk') !== -1; })) return false;
+    }
+    if (!q) return true;
+    return String(p.name).toLowerCase().indexOf(q) !== -1 ||
+           String(p.owner).toLowerCase().indexOf(q) !== -1 ||
+           String(p.location).toLowerCase().indexOf(q) !== -1;
+  });
+
+  list.sort(function(a, b) {
+    var dateA = a.sortDateKey || '1970-01-01';
+    var dateB = b.sortDateKey || '1970-01-01';
+
+    if (currentPetFilter !== 'all' && a.byType && a.byType[currentPetFilter]) {
+      dateA = a.byType[currentPetFilter].sortDateKey || '1970-01-01';
+    }
+    if (currentPetFilter !== 'all' && b.byType && b.byType[currentPetFilter]) {
+      dateB = b.byType[currentPetFilter].sortDateKey || '1970-01-01';
+    }
+
+    return new Date(dateB) - new Date(dateA);
+  });
+
+  if ($('petCount')) $('petCount').textContent = list.length + ' / ' + petsData.length + ' รายการ';
+
+  if (!list.length) {
+    if ($('petList')) $('petList').innerHTML = '<div class="text-center text-slate-400 py-10 bg-white rounded-2xl border border-dashed">ไม่พบข้อมูลสัตว์เลี้ยง</div>';
+    return;
+  }
+
+  var html = '';
+  for (var i = 0; i < list.length; i++) {
+    var p = list[i];
+    var revText = p.totalRevenue > 0 ? '<span class="text-emerald-600 font-bold">' + money(p.totalRevenue) + '</span>' : '<span class="text-slate-400">$0.00 CAD</span>';
+    
+    var displayJobDate = p.newestJobDate;
+    var displayJobPrice = p.newestJobPrice;
+
+    if (currentPetFilter !== 'all' && p.byType && p.byType[currentPetFilter] && p.byType[currentPetFilter].newestJobDate) {
+      displayJobDate = p.byType[currentPetFilter].newestJobDate;
+      displayJobPrice = p.byType[currentPetFilter].newestJobPrice;
+    }
+
+    var newestJobText = displayJobDate ? ('<div class="text-xs text-indigo-700 font-medium mt-0.5">🗓️ Job ล่าสุด: ' + esc(displayJobDate) + ' (<b class="text-emerald-600">' + money(displayJobPrice) + '</b>)</div>') : '';
+
+    html += '<div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex gap-3 fade-in relative">' +
+        renderImage(p.image) +
+        '<div class="min-w-0 flex-1">' +
+          '<div class="flex justify-between items-start pr-12">' +
+            '<div class="font-bold text-sm leading-tight text-slate-800 cursor-pointer" onclick="openJobsModal(\'' + esc(p.id) + '\')">' + esc(p.name) + '</div>' +
+            '<span class="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-semibold border border-indigo-100">' + esc(p.category || 'Pet') + '</span>' +
+          '</div>' +
+          '<button onclick="openEditAnimalModal(\'' + esc(p.id) + '\')" class="absolute top-3 right-3 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2 py-1 rounded-lg transition-colors">✏️ แก้ไข</button>' +
+          '<div class="text-xs text-slate-600 font-medium mt-0.5">👤 เจ้าของ: ' + esc(p.owner || '-') + '</div>' +
+          '<div class="text-xs text-slate-600 font-medium mt-0.5">💰 รายได้รวม: ' + revText + '</div>' +
+          newestJobText +
+          (p.location ? '<div class="text-xs text-slate-500 mt-1">📍 ที่อยู่: ' + esc(p.location) + (p.room ? ' (' + esc(p.room) + ')' : '') + '</div>' : '') +
+          (p.note ? '<div class="text-xs bg-slate-50 p-2 rounded-xl border border-slate-100 text-slate-600 mt-2 whitespace-pre-line">📋 <b>รายละเอียดการดูแล:</b>\n' + esc(p.note) + '</div>' : '') +
+          '<button onclick="openJobsModal(\'' + esc(p.id) + '\')" class="mt-2 w-full text-center py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl">📅 ดู Jobs & รูปภาพเพิ่มเติม</button>' +
+        '</div>' +
+      '</div>';
+  }
+  if ($('petList')) $('petList').innerHTML = html;
+}
+
+var CARE_FIELDS = ['timeOfDay', 'visitDates', 'wetFood', 'wetFoodBrand', 'dryFood', 'water', 'treat', 'avoidFood',
+  'litterLocation', 'litterTrashBin', 'cleaningSupply', 'medication', 'vetEmergency', 'keyReturn',
+  'doorBalconyWindow', 'hidingPlace', 'specialInstruction', 'notes'];
+
+function openAddAnimalModal() {
+  var form = $('addAnimalForm');
+  if (form) form.reset();
+  $('an_id').value = '';
+  $('cl_logId').value = '';
+  $('animalModalTitle').textContent = '🐾 เพิ่มข้อมูลสัตว์เลี้ยงใหม่';
+  $('addAnimalModal').classList.remove('hidden');
+}
+
+function openEditAnimalModal(id) {
+  var p = findPet(id);
+  if (!p) return;
+  var form = $('addAnimalForm');
+  if (form) form.reset();
+  var c = p.careDetail || {};
+  $('an_id').value = p.id || '';
+  $('an_name').value = p.name || '';
+  $('an_category').value = p.category || '';
+  $('an_owner').value = p.owner || '';
+  $('an_location').value = p.location || '';
+  $('an_room').value = p.room || c.addressUnit || '';
+  $('cl_logId').value = c.logId || '';
+  CARE_FIELDS.forEach(function(k) { var el = $('cl_' + k); if (el) el.value = c[k] || ''; });
+  $('animalModalTitle').textContent = '✏️ แก้ไขข้อมูลสัตว์เลี้ยง & PetCareLog';
+  $('addAnimalModal').classList.remove('hidden');
+}
+
+function closeAddAnimalModal() { $('addAnimalModal').classList.add('hidden'); }
+
+$('addAnimalForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var name = $('an_name').value.trim();
+  if (!name) return alert('กรุณากรอกชื่อสัตว์เลี้ยง');
+  var btn = $('an_submitBtn');
+  setBusy(btn, true);
+
+  var petId = $('an_id').value;
+  var careDetail = { logId: $('cl_logId').value };
+  CARE_FIELDS.forEach(function(k) { var el = $('cl_' + k); if (el) careDetail[k] = el.value.trim(); });
+
+  var payload = {
+    id: petId, name: name,
+    category: $('an_category').value.trim(), owner: $('an_owner').value.trim(),
+    location: $('an_location').value.trim(), room: $('an_room').value.trim(),
+    careDetail: careDetail, image: null
+  };
+
+  var fileInput = $('an_file');
+  readImage(fileInput.files && fileInput.files[0], function(img) {
+    payload.image = img;
+    callServer(petId ? 'updateAnimal' : 'addAnimal', [payload], function(res) {
+      setBusy(btn, false, 'บันทึกข้อมูล');
+      closeAddAnimalModal();
+      if (res && res.pets) { petsData = res.pets; renderPets(); }
+    }, function(msg) {
+      setBusy(btn, false, 'บันทึกข้อมูล');
+      alert('เกิดข้อผิดพลาด: ' + msg);
+    });
+  });
+});
+
+function openJobsModal(petId) {
+  var p = findPet(petId) || {};
+  $('j_petId').value = petId;
+  $('jobModalPetName').textContent = '📅 Jobs & รูปภาพ: ' + (p.name || '');
+  $('jobModalPetDetail').textContent = 'เจ้าของ: ' + (p.owner || '-');
+  currentJobsCache = [];
+  resetJobForm();
+  $('photoGallery').innerHTML = '<div class="text-xs text-slate-400 py-2">กำลังโหลดรูปภาพ...</div>';
+  $('jobsList').innerHTML = '<div class="flex justify-center py-4"><div class="spinner"></div></div>';
+  $('jobsModal').classList.remove('hidden');
+
+  callServer('getPetExtraPhotos', [petId], renderPhotos,
+    function(msg) { $('photoGallery').innerHTML = '<div class="text-xs text-red-500 py-2">โหลดรูปไม่สำเร็จ: ' + esc(msg) + '</div>'; });
+  callServer('getPetJobs', [petId], function(jobs) { currentJobsCache = jobs || []; renderJobs(currentJobsCache); },
+    function(msg) { $('jobsList').innerHTML = '<div class="text-xs text-red-500 py-2">โหลด Jobs ไม่สำเร็จ: ' + esc(msg) + '</div>'; });
+}
+
+function closeJobsModal() { $('jobsModal').classList.add('hidden'); }
+
+function uploadExtraPhotoHandler(input) {
+  if (!input.files || !input.files[0]) return;
+  var petId = $('j_petId').value;
+  if (!petId) return;
+  $('photoGallery').innerHTML = '<div class="text-xs text-indigo-600 py-2 font-bold animate-pulse">กำลังอัปโหลดรูปภาพใหม่...</div>';
+  readImage(input.files[0], function(img) {
+    if (!img) return;
+    callServer('uploadExtraPhoto', [{ petId: petId, image: img }], function(res) {
+      input.value = '';
+      renderPhotos(res && res.photos);
+    }, function(msg) {
+      input.value = '';
+      alert('อัปโหลดรูปไม่สำเร็จ: ' + msg);
+      callServer('getPetExtraPhotos', [petId], renderPhotos);
+    });
+  });
+}
+
+function resetJobForm() {
+  $('addJobForm').reset();
+  $('j_jobId').value = '';
+  $('j_startDate').value = todayStr();
+  $('j_endDate').value = todayStr();
+  $('jobFormTitle').textContent = '➕ เพิ่ม Job งานรับดูแลใหม่';
+  $('cancelEditJobBtn').classList.add('hidden');
+  $('j_submitBtn').textContent = '+ บันทึก Job ใหม่';
+  $('j_submitBtn').disabled = false;
+}
+
+function editJob(jobId) {
+  var job = currentJobsCache.find(function(j) { return String(j.jobId) === String(jobId); });
+  if (!job) return;
+  $('j_jobId').value = job.jobId;
+  var typeSel = $('j_type');
+  if (job.type && !Array.prototype.some.call(typeSel.options, function(o) { return o.value === job.type; })) {
+    var opt = document.createElement('option'); opt.value = job.type; opt.textContent = job.type; typeSel.appendChild(opt);
+  }
+  typeSel.value = job.type || 'Dropin Visit';
+  $('j_price').value = job.price || 0;
+  $('j_tip').value = job.tip || 0;
+  $('j_pickupPrice').value = job.pickupPrice || 0;
+  $('j_cost').value = job.cost || 0;
+  $('j_startDate').value = job.startDate || todayStr();
+  $('j_endDate').value = job.endDate || job.startDate || todayStr();
+  $('j_note').value = job.note || '';
+  $('jobFormTitle').textContent = '✏️ แก้ไข Job (ID: ' + job.jobId + ')';
+  $('cancelEditJobBtn').classList.remove('hidden');
+  $('j_submitBtn').textContent = '💾 บันทึกการแก้ไข Job';
+  var modalBox = document.querySelector('#jobsModal > div');
+  if (modalBox) modalBox.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderPhotos(photos) {
+  if (!photos || !photos.length) {
+    $('photoGallery').innerHTML = '<div class="text-xs text-slate-400 py-2">ยังไม่มีรูปภาพเพิ่มเติม กดปุ่ม "เพิ่มรูปใหม่" ด้านบนได้เลย</div>';
+    return;
+  }
+  var html = '';
+  photos.forEach(function(url) {
+    html += '<a href="' + esc(url) + '" target="_blank" class="w-[48%] shrink-0 snap-start"><img src="' + esc(url) + '" class="w-full h-28 rounded-xl object-cover border border-slate-200 shadow-sm" alt="Pet Photo" referrerpolicy="no-referrer" onerror="this.parentNode.style.display=\'none\';"></a>';
+  });
+  $('photoGallery').innerHTML = html;
+}
+
+function renderJobs(jobs) {
+  if (!jobs || !jobs.length) {
+    $('jobsList').innerHTML = '<div class="text-center text-xs text-slate-400 py-4">ยังไม่มีประวัติงานรับดูแล</div>';
+    return;
+  }
+  var html = '';
+  jobs.forEach(function(j) {
+    var details = [];
+    if (j.price) details.push('Price: ' + money(j.price));
+    if (j.tip) details.push('Tip: ' + money(j.tip));
+    if (j.pickupPrice) details.push('Pickup: ' + money(j.pickupPrice));
+    if (j.cost) details.push('Cost: <span class="text-red-600">' + money(-Math.abs(j.cost)) + '</span>');
+    html += '<div class="bg-white p-2.5 rounded-xl border border-slate-200 text-xs space-y-1 relative">' +
+        '<div class="flex justify-between items-center font-semibold text-slate-800 pr-14">' +
+          '<span>' + esc(j.type) + '</span>' +
+          '<span class="text-emerald-600 font-bold text-sm">' + money(j.netTotal) + '</span>' +
+        '</div>' +
+        '<button onclick="editJob(\'' + esc(j.jobId) + '\')" class="absolute top-2.5 right-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded">✏️ แก้ไข</button>' +
+        '<div class="text-slate-500">🗓️ ' + esc(j.startDate || '-') + ' ถึง ' + esc(j.endDate || '-') + (j.source ? ' · ' + esc(j.source) : '') + '</div>' +
+        (details.length ? '<div class="text-[11px] text-slate-600 bg-slate-50 px-2 py-1 rounded border border-slate-100 flex flex-wrap gap-x-3 gap-y-0.5">' + details.join(' | ') + '</div>' : '') +
+        (j.note ? '<div class="text-[11px] text-slate-500">📝 ' + esc(j.note) + '</div>' : '') +
+      '</div>';
+  });
+  $('jobsList').innerHTML = html;
+}
+
+$('addJobForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var startDate = $('j_startDate').value, endDate = $('j_endDate').value || startDate;
+  if (endDate < startDate) return alert('วันสิ้นสุดต้องไม่ก่อนวันเริ่มงาน');
+  var btn = $('j_submitBtn');
+  var isEdit = !!$('j_jobId').value;
+  setBusy(btn, true);
+  var payload = {
+    jobId: $('j_jobId').value, petId: $('j_petId').value, serviceType: $('j_type').value,
+    price: $('j_price').value, tip: $('j_tip').value, pickupPrice: $('j_pickupPrice').value, cost: $('j_cost').value,
+    startDate: startDate, endDate: endDate, note: $('j_note').value.trim()
+  };
+  callServer('saveJob', [payload], function(res) {
+    resetJobForm();
+    if (res && res.jobs) { currentJobsCache = res.jobs; renderJobs(res.jobs); }
+    if (res && res.pets) { petsData = res.pets; renderPets(); }
+  }, function(msg) {
+    setBusy(btn, false, isEdit ? '💾 บันทึกการแก้ไข Job' : '+ บันทึก Job ใหม่');
+    alert('เกิดข้อผิดพลาด: ' + msg);
+  });
+});
+
+// === Inventory Functions ===
+function loadProducts() {
+  $('productList').innerHTML = '<div class="flex justify-center py-10"><div class="spinner"></div></div>';
+  callServer('getProducts', [], function(data) { productsData = data || []; renderProducts(); },
+    function(msg) { $('productList').innerHTML = errorBox(msg); });
+}
+
+function setFilter(f) {
+  currentFilter = f;
+  ['all', 'open', 'sold'].forEach(function(k) {
+    var el = $('flt-' + k);
+    if (el) el.className = (k === f) ? 'flex-1 px-2 py-1.5 rounded-full font-medium text-xs sm:text-sm bg-white shadow text-indigo-700' : 'flex-1 px-2 py-1.5 rounded-full font-medium text-xs sm:text-sm text-slate-600';
+  });
+  renderProducts();
+}
+
+function renderProducts() {
+  var q = $('searchBox').value.trim().toLowerCase();
+  var list = productsData.filter(function(p) {
+    if (currentFilter === 'open' && p.sold) return false;
+    if (currentFilter === 'sold' && !p.sold) return false;
+    if (q && String(p.name).toLowerCase().indexOf(q) === -1 && String(p.id).toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  });
+
+  $('productCount').textContent = list.length + ' / ' + productsData.length + ' รายการ';
+  var html = '';
+  list.forEach(function(p) {
+    var pid = esc(p.id);
+    var editBtn = '<button onclick="openEditProductModal(\'' + pid + '\')" class="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5">✏️ แก้ไข</button>';
+    var action = p.sold ?
+      '<div class="mt-2 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800"><b>ขายแล้ว:</b> ' + money(p.salePrice) + (p.saleDate ? ' (' + esc(p.saleDate) + ')' : '') +
+        ' กำไร: <span class="font-bold ' + (p.salePrice - p.cost >= 0 ? 'text-emerald-600' : 'text-red-600') + '">' + money(p.salePrice - p.cost) + '</span></div>' +
+        '<div class="flex justify-end mt-2">' + editBtn + '</div>' :
+      '<div class="flex gap-2 mt-2"><button onclick="openSoldModal(\'' + pid + '\')" class="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-1.5">💰 บันทึกว่าขายแล้ว</button>' + editBtn + '</div>';
+
+    var dates = [];
+    if (p.startDate) dates.push('ซื้อ ' + esc(p.startDate));
+    if (p.postDate) dates.push('ลงขาย ' + esc(p.postDate));
+
+    html += '<div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex gap-3 fade-in">' +
+      renderImage(p.image) +
+      '<div class="min-w-0 flex-1">' +
+        '<div class="flex items-start justify-between gap-2"><div class="font-semibold text-sm">' + esc(p.name) + '</div>' +
+          '<span class="text-[10px] shrink-0 px-2 py-0.5 rounded-full font-semibold ' + (p.sold ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700') + '">' + (p.sold ? 'ขายแล้ว' : 'ยังไม่ขาย') + '</span></div>' +
+        '<div class="text-xs text-slate-500 mt-0.5">ทุน: <b class="text-indigo-600">' + money(p.cost) + '</b> | ตั้งขาย: <b class="text-emerald-600">' + money(p.postPrice) + '</b></div>' +
+        (dates.length ? '<div class="text-[11px] text-slate-400 mt-0.5">' + dates.join(' · ') + '</div>' : '') +
+        (p.note ? '<div class="text-[11px] text-slate-500 mt-0.5">📝 ' + esc(p.note) + '</div>' : '') +
+        action +
+      '</div></div>';
+  });
+  $('productList').innerHTML = html || '<div class="text-center text-slate-400 py-10 bg-white rounded-2xl border border-dashed">ไม่พบรายการสินค้า</div>';
+}
+
+function toggleSoldFields() {
+  var on = $('a_sold').checked;
+  $('a_soldFields').classList.toggle('hidden', !on);
+  if (on && !$('a_saleDate').value) $('a_saleDate').value = todayStr();
+  if (on && !$('a_salePrice').value) $('a_salePrice').value = $('a_postPrice').value || '';
+}
+
+function openAddProductModal() {
+  $('addProductForm').reset();
+  $('a_id').value = '';
+  $('productModalTitle').textContent = '✨ เพิ่มรายการสินค้าใหม่';
+  $('a_preview').innerHTML = '📦';
+  $('a_fileHint').classList.add('hidden');
+  $('a_deleteBtn').classList.add('hidden');
+  $('a_startDate').value = todayStr();
+  toggleSoldFields();
+  $('addProductModal').classList.remove('hidden');
+}
+
+function openEditProductModal(id) {
+  var p = productsData.find(function(x) { return String(x.id) === String(id); });
+  if (!p) return;
+  $('addProductForm').reset();
+  $('a_id').value = p.id;
+  $('a_name').value = p.name || '';
+  $('a_startDate').value = p.startDate || '';
+  $('a_cost').value = p.cost || 0;
+  $('a_postDate').value = p.postDate || '';
+  $('a_postPrice').value = p.postPrice || 0;
+  $('a_note').value = p.note || '';
+  $('a_sold').checked = !!p.sold;
+  $('a_saleDate').value = p.saleDate || '';
+  $('a_salePrice').value = p.sold ? (p.salePrice || 0) : '';
+  $('a_preview').innerHTML = p.image ? '<img src="' + esc(p.image) + '" class="h-full w-full object-cover" referrerpolicy="no-referrer">' : '📦';
+  $('a_fileHint').classList.remove('hidden');
+  $('a_deleteBtn').classList.remove('hidden');
+  $('productModalTitle').textContent = '✏️ แก้ไขสินค้า';
+  toggleSoldFields();
+  $('addProductModal').classList.remove('hidden');
+}
+
+function closeAddProductModal() { $('addProductModal').classList.add('hidden'); }
+
+function deleteProductHandler() {
+  var id = $('a_id').value;
+  if (!id || !confirm('ลบสินค้านี้ออกจากชีต Products? (ย้อนกลับไม่ได้)')) return;
+  var btn = $('a_deleteBtn');
+  btn.disabled = true;
+  callServer('deleteProduct', [id], function(res) {
+    btn.disabled = false;
+    closeAddProductModal();
+    if (res && res.products) { productsData = res.products; renderProducts(); }
+  }, function(msg) { btn.disabled = false; alert('ลบไม่สำเร็จ: ' + msg); });
+}
+
+$('addProductForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var name = $('a_name').value.trim();
+  if (!name) return alert('กรุณากรอกชื่อสินค้า');
+  var id = $('a_id').value;
+  var sold = $('a_sold').checked;
+  var payload = {
+    id: id, name: name,
+    startDate: $('a_startDate').value, cost: $('a_cost').value,
+    postDate: $('a_postDate').value, postPrice: $('a_postPrice').value,
+    note: $('a_note').value.trim(),
+    sold: sold, saleDate: sold ? ($('a_saleDate').value || todayStr()) : '', salePrice: sold ? $('a_salePrice').value : '',
+    image: null
+  };
+  var btn = $('a_submitBtn');
+  setBusy(btn, true);
+  var fileInput = $('a_file');
+  readImage(fileInput.files && fileInput.files[0], function(img) {
+    payload.image = img;
+    callServer(id ? 'updateProduct' : 'addProduct', [payload], function(res) {
+      setBusy(btn, false, 'บันทึก');
+      closeAddProductModal();
+      if (res && res.products) { productsData = res.products; renderProducts(); }
+    }, function(msg) {
+      setBusy(btn, false, 'บันทึก');
+      alert('เกิดข้อผิดพลาด: ' + msg);
+    });
+  });
+});
+
+function openSoldModal(id) {
+  var p = productsData.find(function(x) { return String(x.id) === String(id); });
+  if (!p) return;
+  $('s_id').value = id;
+  $('soldItemName').textContent = p.name;
+  $('s_price').value = p.postPrice || p.cost || '';
+  $('s_date').value = todayStr();
+  $('soldModal').classList.remove('hidden');
+}
+function closeSoldModal() { $('soldModal').classList.add('hidden'); }
+
+$('soldForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var btn = $('s_submitBtn');
+  setBusy(btn, true);
+  callServer('markAsSold', [$('s_id').value, $('s_price').value, $('s_date').value], function(res) {
+    setBusy(btn, false, 'บันทึก');
+    closeSoldModal();
+    if (res && res.products) { productsData = res.products; renderProducts(); }
+  }, function(msg) { setBusy(btn, false, 'บันทึก'); alert('เกิดข้อผิดพลาด: ' + msg); });
+});
+
+// === Dashboard & All Graphs ===
+function loadDashboard() {
+  callServer('getRevenueSummary', [], function(summary) {
+    if ($('kpiNetProfit')) $('kpiNetProfit').textContent = money(summary.netProfit);
+    if ($('kpiPetProfit')) $('kpiPetProfit').textContent = money(summary.totalPetProfit);
+    if ($('kpiProductProfit')) $('kpiProductProfit').textContent = money(summary.totalProductProfit);
+    if ($('kpiSoldCount')) $('kpiSoldCount').textContent = summary.soldCount + ' รายการ';
+    renderAllDashboardCharts(summary.monthlyData);
+  });
+}
+
+function createChart(canvasId, type, labels, datasets, isStacked) {
+  var el = $(canvasId);
+  if (!el) return;
+  if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+  chartInstances[canvasId] = new Chart(el.getContext('2d'), {
+    type: type,
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
+      scales: { x: { stacked: !!isStacked }, y: { stacked: !!isStacked, beginAtZero: true } }
+    }
+  });
+}
+
+function renderAllDashboardCharts(monthlyData) {
+  var months = Object.keys(monthlyData || {}).sort();
+  var dropin = months.map(function(m) { return monthlyData[m].Dropin || 0; });
+  var boarding = months.map(function(m) { return monthlyData[m].Boarding || 0; });
+  var walking = months.map(function(m) { return monthlyData[m].Walking || 0; });
+  var selling = months.map(function(m) { return monthlyData[m].Selling || 0; });
+  var petAll = months.map(function(m) { return monthlyData[m].PetSitterAll || 0; });
+
+  createChart('chartOverall', 'bar', months, [
+    { label: 'Drop in', data: dropin, backgroundColor: '#6366f1' },
+    { label: 'Boarding', data: boarding, backgroundColor: '#8b5cf6' },
+    { label: 'Walking', data: walking, backgroundColor: '#06b6d4' },
+    { label: 'Selling', data: selling, backgroundColor: '#10b981' }
+  ], true);
+
+  createChart('chartPetSitter', 'bar', months, [{ label: 'Pet Sitter รวม (CAD)', data: petAll, backgroundColor: '#4f46e5' }]);
+  createChart('chartDropin', 'bar', months, [{ label: 'Drop in (CAD)', data: dropin, backgroundColor: '#6366f1' }]);
+  createChart('chartBoarding', 'bar', months, [{ label: 'Boarding (CAD)', data: boarding, backgroundColor: '#8b5cf6' }]);
+  createChart('chartWalking', 'bar', months, [{ label: 'Walking (CAD)', data: walking, backgroundColor: '#06b6d4' }]);
+  createChart('chartSelling', 'bar', months, [{ label: 'Selling (CAD)', data: selling, backgroundColor: '#10b981' }]);
+}
+
+// === POKER TRACKER FUNCTIONS ===
+var pokerData = { results: [] };
+function loadPoker() {
+  if ($('pkFilterDate') && !$('pkFilterDate').value) $('pkFilterDate').value = todayStr();
+  callServer('getPokerData', [], function(data) {
+    pokerData = data || { results: [] };
+    renderPokerDashboard();
+    renderPokerRawTable();
+  });
+}
+
+function openAddPokerModal() {
+  if ($('pk_modalDate')) $('pk_modalDate').value = $('pkFilterDate') ? $('pkFilterDate').value : todayStr();
+  if ($('pkBatchTbody')) $('pkBatchTbody').innerHTML = '';
+  ['Thon', 'Fah', 'Fern', 'Khim'].forEach(function(name) { addPokerRow(name, 1000, 1000); });
+  if ($('addPokerModal')) $('addPokerModal').classList.remove('hidden');
+}
+function closeAddPokerModal() { if ($('addPokerModal')) $('addPokerModal').classList.add('hidden'); }
+
+function addPokerRow(name, buyin, cashed) {
+  var tbody = $('pkBatchTbody');
+  if (!tbody) return;
+  var tr = document.createElement('tr');
+  tr.innerHTML = '<td class="p-1.5"><input type="text" class="pk-name w-full rounded-lg border px-2 py-1 text-xs" value="' + esc(name || '') + '"></td>' +
+    '<td class="p-1.5"><input type="number" class="pk-buyin w-full rounded-lg border px-2 py-1 text-xs text-right" value="' + (buyin || 1000) + '"></td>' +
+    '<td class="p-1.5"><input type="number" class="pk-cashed w-full rounded-lg border px-2 py-1 text-xs text-right" value="' + (cashed || 1000) + '"></td>' +
+    '<td class="p-1.5 text-center"><button type="button" onclick="this.closest(\'tr\').remove()" class="text-red-500 font-bold">&times;</button></td>';
+  tbody.appendChild(tr);
+}
+
+function submitPokerBatch() {
+  var rows = [];
+  document.querySelectorAll('#pkBatchTbody tr').forEach(function(tr) {
+    var name = tr.querySelector('.pk-name').value.trim();
+    if (name) rows.push({ player: name, buyin: tr.querySelector('.pk-buyin').value, cashedOut: tr.querySelector('.pk-cashed').value });
+  });
+  if (!rows.length) return alert('กรุณากรอกข้อมูลผู้เล่น');
+
+  var btn = $('pk_submitBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'กำลังบันทึก...';
+  }
+  var payload = { date: $('pk_modalDate').value || todayStr(), sessionId: $('pk_modalSessionId').value || '1', rows: rows };
+  callServer('addPokerBatchResults', [payload], function(res) {
+    setBusy(btn, false, 'บันทึกทั้งหมดลงชีต');
+    closeAddPokerModal();
+    if (res && res.poker) { pokerData = res.poker; renderPokerDashboard(); renderPokerRawTable(); }
+  }, function(msg) { setBusy(btn, false, 'บันทึกทั้งหมดลงชีต'); alert('เกิดข้อผิดพลาด: ' + msg); });
+}
+
+function renderPokerDashboard() {
+  var selDate = $('pkFilterDate') ? $('pkFilterDate').value : todayStr();
+  var selMonth = selDate.substring(0, 7);
+  var selYear = selDate.substring(0, 4);
+
+  if ($('pkColSelectedDay')) $('pkColSelectedDay').textContent = selDate;
+  if ($('pkColSelectedMonth')) $('pkColSelectedMonth').textContent = selMonth;
+  if ($('pkColSelectedYear')) $('pkColSelectedYear').textContent = selYear;
+
+  var stats = {};
+  (pokerData.results || []).forEach(function(r) {
+    var p = r.player;
+    if (!stats[p]) stats[p] = { day: 0, month: 0, year: 0, all: 0 };
+    var po = r.payoutCAD || 0;
+    stats[p].all += po;
+    if (r.date && r.date.substring(0, 4) === selYear) stats[p].year += po;
+    if (r.date && r.date.substring(0, 7) === selMonth) stats[p].month += po;
+    if (r.date === selDate) stats[p].day += po;
+  });
+
+  var players = Object.keys(stats).sort();
+  var tbody = '';
+  var dayL = [], dayV = [], monthL = [], monthV = [], yearL = [], yearV = [];
+
+  players.forEach(function(p) {
+    var s = stats[p];
+    tbody += '<tr><td class="p-2 font-bold">' + esc(p) + '</td>' +
+      '<td class="p-2 text-right font-semibold ' + (s.day >= 0 ? 'text-emerald-600' : 'text-red-600') + '">' + money(s.day) + '</td>' +
+      '<td class="p-2 text-right font-semibold ' + (s.month >= 0 ? 'text-emerald-600' : 'text-red-600') + '">' + money(s.month) + '</td>' +
+      '<td class="p-2 text-right font-semibold ' + (s.year >= 0 ? 'text-emerald-600' : 'text-red-600') + '">' + money(s.year) + '</td>' +
+      '<td class="p-2 text-right font-semibold ' + (s.all >= 0 ? 'text-emerald-600' : 'text-red-600') + '">' + money(s.all) + '</td></tr>';
+
+    dayL.push(p); dayV.push(s.day);
+    monthL.push(p); monthV.push(s.month);
+    yearL.push(p); yearV.push(s.year);
+  });
+
+  if ($('pkDashboardTbody')) $('pkDashboardTbody').innerHTML = tbody || '<tr><td colspan="5" class="text-center py-4 text-slate-400">ยังไม่มีข้อมูล</td></tr>';
+
+  renderPokerChart('chartPokerDay', dayL, dayV);
+  renderPokerChart('chartPokerMonth', monthL, monthV);
+  renderPokerChart('chartPokerYear', yearL, yearV);
+}
+
+function renderPokerChart(canvasId, labels, data) {
+  var el = $(canvasId);
+  if (!el) return;
+  if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+  chartInstances[canvasId] = new Chart(el.getContext('2d'), {
+    type: 'bar',
+    data: { labels: labels, datasets: [{ data: data, backgroundColor: data.map(function(v) { return v >= 0 ? '#10b981' : '#ef4444'; }), borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+}
+
+function renderPokerRawTable() {
+  var html = '';
+  (pokerData.results || []).forEach(function(r) {
+    html += '<tr class="hover:bg-slate-50"><td class="p-2">' + esc(r.date) + '</td><td class="p-2">' + esc(r.sessionId) + '</td>' +
+      '<td class="p-2 font-bold">' + esc(r.player) + '</td><td class="p-2 text-right">' + Number(r.buyin).toLocaleString() + '</td>' +
+      '<td class="p-2 text-right">' + Number(r.chipsCashedOut).toLocaleString() + '</td>' +
+      '<td class="p-2 text-right font-semibold ' + (r.lossGainChips >= 0 ? 'text-emerald-600' : 'text-red-600') + '">' + Number(r.lossGainChips).toLocaleString() + '</td>' +
+      '<td class="p-2 text-right font-bold ' + (r.payoutCAD >= 0 ? 'text-emerald-600' : 'text-red-600') + '">' + money(r.payoutCAD) + '</td></tr>';
+  });
+  if ($('pkRawTbody')) $('pkRawTbody').innerHTML = html || '<tr><td colspan="7" class="text-center py-4 text-slate-400">ยังไม่มีประวัติ</td></tr>';
+}
+
+var petSearchBoxEl = $('petSearchBox');
+if (petSearchBoxEl) petSearchBoxEl.addEventListener('input', renderPets);
+
+var searchBoxEl = $('searchBox');
+if (searchBoxEl) searchBoxEl.addEventListener('input', renderProducts);
+
+window.addEventListener('DOMContentLoaded', function() { loadPetData(); });
+</script>
+</body>
+</html>

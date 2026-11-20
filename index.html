@@ -505,6 +505,17 @@
     </div>
   </div>
 
+  <!-- Modal: รหัสเข้าใช้ (เฉพาะตอนเปิดจาก GitHub Pages) -->
+  <div id="loginModal" class="hidden fixed inset-0 z-[60] bg-indigo-900/70 flex items-center justify-center p-4">
+    <form onsubmit="submitLogin(event)" class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-xl space-y-3">
+      <h3 class="text-lg font-bold">🔐 เข้าใช้ VanBiz</h3>
+      <p class="text-xs text-slate-500">ใส่รหัสเข้าใช้ (API_KEY) ครั้งเดียว เครื่องนี้จะจำไว้</p>
+      <input type="password" id="loginKey" autocomplete="current-password" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" placeholder="รหัสเข้าใช้">
+      <p id="loginMsg" class="text-xs text-red-600"></p>
+      <button type="submit" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 text-sm">เข้าใช้</button>
+    </form>
+  </div>
+
 <script>
 var petsData = [];
 var productsData = [];
@@ -518,8 +529,59 @@ function esc(s) { return s == null ? '' : String(s).replace(/&/g, '&amp;').repla
 function money(n) { var v = Number(n || 0); return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' CAD'; }
 function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
+// ลิงก์ Apps Script (/exec) ที่ต่อกับชีต Van BIz — ใช้ตอนเปิดจาก GitHub Pages
+var API_URL = 'https://script.google.com/macros/s/AKfycbzDEw5Mm1EoixwNzczcLwwkKGy_xqP6X1QbmqqXN3dXmKltbyrw3_MhyyK47LwFQyusfA/exec';
+var IN_APPS_SCRIPT = !!(window.google && google.script && google.script.run);
+var KEY_STORE = 'vanbiz_api_key';
+
+function getApiKey() { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return window._vbKey || ''; } }
+function setApiKey(k) { try { localStorage.setItem(KEY_STORE, k); } catch (e) { window._vbKey = k; } }
+
+var pendingAfterLogin = [];
+function showLogin(msg) {
+  $('loginMsg').textContent = msg || '';
+  $('loginModal').classList.remove('hidden');
+  setTimeout(function() { $('loginKey').focus(); }, 50);
+}
+function submitLogin(e) {
+  if (e) e.preventDefault();
+  var k = $('loginKey').value.trim();
+  if (!k) return;
+  setApiKey(k);
+  $('loginModal').classList.add('hidden');
+  var q = pendingAfterLogin; pendingAfterLogin = [];
+  if (q.length) q.forEach(function(f) { f(); }); else refreshData();
+}
+
 // เรียกฟังก์ชันฝั่ง Apps Script พร้อมจัดการ error ทุกครั้ง (ไม่ให้หมุนค้าง)
+// - เปิดจากลิงก์ Apps Script: ใช้ google.script.run
+// - เปิดจาก GitHub Pages: ส่ง fetch ไปที่ API_URL พร้อมรหัสเข้าใช้
 function callServer(fnName, args, onOk, onFail) {
+  var fail = function(msg) { if (onFail) onFail(msg); else alert('เกิดข้อผิดพลาด: ' + msg); };
+  if (!IN_APPS_SCRIPT) {
+    var key = getApiKey();
+    if (!key) { pendingAfterLogin.push(function() { callServer(fnName, args, onOk, onFail); }); showLogin(); return; }
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // text/plain = ไม่มี CORS preflight
+      body: JSON.stringify({ action: fnName, args: args || [], key: key })
+    })
+      .then(function(r) { return r.text(); })
+      .then(function(t) {
+        var res;
+        try { res = JSON.parse(t); } catch (e) { throw new Error('เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง (ตรวจว่า Deploy เป็น New version และ Who has access = Anyone แล้ว)'); }
+        if (res.ok) { if (onOk) onOk(res.data); return; }
+        if (res.error === 'UNAUTHORIZED') {
+          setApiKey('');
+          pendingAfterLogin.push(function() { callServer(fnName, args, onOk, onFail); });
+          showLogin('รหัสไม่ถูกต้อง ลองใหม่อีกครั้ง');
+          return;
+        }
+        fail(res.error);
+      })
+      .catch(function(err) { fail(err && err.message ? err.message : String(err)); });
+    return;
+  }
   var runner = google.script.run
     .withSuccessHandler(function(res) { if (onOk) onOk(res); })
     .withFailureHandler(function(err) {

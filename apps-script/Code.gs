@@ -841,3 +841,57 @@ function uploadFileToDrive(base64Data, mimeType, fileName) {
   if (!base64Data) return '';
   return uploadProductImage_({ base64: base64Data, mimeType: mimeType, fileName: fileName }, String(Date.now()));
 }
+
+/**
+ * ============================================================
+ *  JSON API สำหรับหน้าเว็บบน GitHub Pages (thampofficial.github.io/VanBiz)
+ *  หน้าเว็บส่ง POST { action, args, key } มาที่ลิงก์ /exec
+ *  ต้องมีรหัส API_KEY ตรงกับที่ตั้งไว้ใน Script Properties (รัน setupApiKey ครั้งเดียว)
+ * ============================================================
+ */
+const API_FUNCS_ = {
+  getPetSitterData: getPetSitterData,
+  updateAnimal: updateAnimal,
+  addAnimal: addAnimal,
+  getPetExtraPhotos: getPetExtraPhotos,
+  uploadExtraPhoto: uploadExtraPhoto,
+  getPetJobs: getPetJobs,
+  saveJob: saveJob,
+  getProducts: getProducts,
+  addProduct: addProduct,
+  updateProduct: updateProduct,
+  markAsSold: markAsSold,
+  deleteProduct: deleteProduct,
+  getRevenueSummary: getRevenueSummary,
+  getPokerData: getPokerData,
+  addPokerBatchResults: addPokerBatchResults,
+  ping: function() { return 'ok'; }
+};
+
+function doPost(e) {
+  let out;
+  try {
+    const req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    const key = PropertiesService.getScriptProperties().getProperty('API_KEY');
+    if (!key) throw new Error('ยังไม่ได้ตั้งรหัส API_KEY — เปิด Apps Script แล้วรันฟังก์ชัน setupApiKey');
+    if (String(req.key || '') !== key) throw new Error('UNAUTHORIZED');
+    const fn = API_FUNCS_[req.action];
+    if (!fn) throw new Error('ไม่รู้จักคำสั่ง: ' + req.action);
+    out = { ok: true, data: fn.apply(null, req.args || []) };
+  } catch (err) {
+    out = { ok: false, error: (err && err.message) ? err.message : String(err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// รันครั้งเดียวใน Apps Script editor: สร้างรหัสเข้าใช้ แล้วดูรหัสใน Execution log
+function setupApiKey() {
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty('API_KEY');
+  if (!key) {
+    key = Utilities.getUuid().replace(/-/g, '').substring(0, 12);
+    props.setProperty('API_KEY', key);
+  }
+  Logger.log('รหัสเข้าใช้ VanBiz (API_KEY): ' + key);
+  return key;
+}
