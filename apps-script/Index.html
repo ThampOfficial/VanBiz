@@ -322,7 +322,7 @@
           <span class="text-xs font-bold text-slate-700">🖼️ รูปภาพเพิ่มเติม (AnimalPhotos)</span>
           <label class="text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1 rounded-lg cursor-pointer shadow">
             <span>+ เพิ่มรูปใหม่</span>
-            <input type="file" id="extraPhotoFile" accept="image/*" onchange="uploadExtraPhotoHandler(this)" class="hidden">
+            <input type="file" id="extraPhotoFile" accept="image/*" multiple onchange="uploadExtraPhotoHandler(this)" class="hidden">
           </label>
         </div>
         <div id="photoGallery" class="flex gap-2 overflow-x-auto pb-2 border-b border-slate-100 snap-x">
@@ -933,22 +933,47 @@ function openJobsModal(petId) {
 
 function closeJobsModal() { $('jobsModal').classList.add('hidden'); }
 
+function newPhotoId() {
+  var a = new Uint8Array(4);
+  (window.crypto || window.msCrypto).getRandomValues(a);
+  return Array.prototype.map.call(a, function(x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+}
+
+// อัปโหลดรูปเพิ่มเติม (เลือกได้หลายรูป) — ถ้าเน็ตหลุดจะลองใหม่อัตโนมัติ 1 ครั้ง โดยไม่บันทึกรูปซ้ำ
 function uploadExtraPhotoHandler(input) {
-  if (!input.files || !input.files[0]) return;
+  var files = Array.prototype.slice.call(input.files || []);
   var petId = $('j_petId').value;
-  if (!petId) return;
-  $('photoGallery').innerHTML = '<div class="text-xs text-indigo-600 py-2 font-bold animate-pulse">กำลังอัปโหลดรูปภาพใหม่...</div>';
-  readImage(input.files[0], function(img) {
-    if (!img) return;
-    callServer('uploadExtraPhoto', [{ petId: petId, image: img }], function(res) {
-      input.value = '';
-      renderPhotos(res && res.photos);
-    }, function(msg) {
-      input.value = '';
-      alert('อัปโหลดรูปไม่สำเร็จ: ' + msg);
-      callServer('getPetExtraPhotos', [petId], renderPhotos);
+  input.value = '';
+  if (!files.length || !petId) return;
+  var done = 0, failed = 0;
+  var status = function() {
+    $('photoGallery').innerHTML = '<div class="text-xs text-indigo-600 py-2 font-bold animate-pulse">กำลังอัปโหลดรูป ' + (done + failed + 1) + '/' + files.length + '...</div>';
+  };
+  var finish = function() {
+    callServer('getPetExtraPhotos', [petId], renderPhotos);
+    if (failed) alert('อัปโหลดไม่สำเร็จ ' + failed + ' รูป ลองใหม่อีกครั้ง');
+  };
+  var next = function() {
+    if (done + failed >= files.length) return finish();
+    status();
+    readImage(files[done + failed], function(img) {
+      if (!img) { failed++; return next(); }
+      var payload = { petId: petId, photoId: newPhotoId(), image: img };
+      var attempt = function(n) {
+        callServer('uploadExtraPhoto', [payload], function(res) {
+          done++;
+          if (res && res.photos && done + failed >= files.length) { renderPhotos(res.photos); if (failed) alert('อัปโหลดไม่สำเร็จ ' + failed + ' รูป'); return; }
+          next();
+        }, function(msg) {
+          if (n < 1) return setTimeout(function() { attempt(n + 1); }, 1500);
+          failed++;
+          next();
+        });
+      };
+      attempt(0);
     });
-  });
+  };
+  next();
 }
 
 function resetJobForm() {
