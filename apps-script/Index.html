@@ -290,6 +290,10 @@
             <div><label class="block text-[11px] text-slate-600 mb-1">Vet / Emergency</label><input type="text" id="cl_vetEmergency" placeholder="VCA Clinic" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
             <div><label class="block text-[11px] text-slate-600 mb-1">Key Return</label><input type="text" id="cl_keyReturn" placeholder="Lockbox 1234" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
           </div>
+          <div>
+            <div class="text-[11px] font-bold text-slate-700 mb-1">📸 รูปจุดวางของ (แตะเพื่อถ่าย/เลือกรูป)</div>
+            <div id="carePhotoTiles" class="grid grid-cols-4 gap-2"></div>
+          </div>
           <div class="grid grid-cols-2 gap-2">
             <div><label class="block text-[11px] text-slate-600 mb-1">Door / Balcony / Window</label><input type="text" id="cl_doorBalconyWindow" placeholder="Keep balcony closed" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
             <div><label class="block text-[11px] text-slate-600 mb-1">Hiding place</label><input type="text" id="cl_hidingPlace" placeholder="Under the bed" class="w-full rounded-xl border border-slate-300 px-2 py-1 text-xs"></div>
@@ -531,6 +535,12 @@
         <button type="button" id="pk_submitBtn" onclick="submitPokerBatch()" class="flex-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 text-xs shadow">บันทึกทั้งหมดลงชีต</button>
       </div>
     </div>
+  </div>
+
+  <!-- ดูรูปขนาดใหญ่ -->
+  <div id="lightbox" class="hidden fixed inset-0 z-[70] bg-black/90 flex flex-col items-center justify-center p-4" onclick="closeLightbox()">
+    <img id="lightboxImg" class="max-h-[85vh] max-w-full rounded-xl object-contain" referrerpolicy="no-referrer">
+    <div id="lightboxCaption" class="text-white text-sm mt-3"></div>
   </div>
 
   <!-- Modal: รหัสเข้าใช้ (เฉพาะตอนเปิดจาก GitHub Pages) -->
@@ -842,6 +852,7 @@ function renderPets() {
           newestJobText +
           (p.location ? '<div class="text-xs text-slate-500 mt-1">📍 ที่อยู่: ' + esc(p.location) + (p.room ? ' (' + esc(p.room) + ')' : '') + '</div>' : '') +
           (p.note ? '<div class="text-xs bg-slate-50 p-2 rounded-xl border border-slate-100 text-slate-600 mt-2 whitespace-pre-line">📋 <b>รายละเอียดการดูแล:</b>\n' + esc(p.note) + '</div>' : '') +
+          carePhotoStrip(p) +
           '<button onclick="openJobsModal(\'' + jsq(p.id) + '\')" class="mt-2 w-full text-center py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl">📅 ดู Jobs & รูปภาพเพิ่มเติม</button>' +
         '</div>' +
       '</div>';
@@ -853,12 +864,73 @@ var CARE_FIELDS = ['timeOfDay', 'visitDates', 'wetFood', 'wetFoodBrand', 'dryFoo
   'litterLocation', 'litterTrashBin', 'cleaningSupply', 'medication', 'vetEmergency', 'keyReturn',
   'doorBalconyWindow', 'hidingPlace', 'specialInstruction', 'notes'];
 
+// ===== รูปจุดวางของ (PetCareLog) =====
+var CARE_PHOTO_TYPES = [
+  { key: 'food', label: '🥣 อาหาร' },
+  { key: 'water', label: '💧 น้ำ' },
+  { key: 'trash', label: '🗑️ ถังขยะ' },
+  { key: 'litter', label: '🧹 ทรายแมว' }
+];
+var carePhotoFiles = {}, carePhotoRemove = {}, carePhotoCurrent = {};
+
+function renderCarePhotoTiles() {
+  var html = '';
+  CARE_PHOTO_TYPES.forEach(function(t) {
+    var file = carePhotoFiles[t.key];
+    var src = file ? URL.createObjectURL(file) : (carePhotoRemove[t.key] ? '' : (carePhotoCurrent[t.key] ? thumbUrl(carePhotoCurrent[t.key], 300) : ''));
+    html += '<div class="relative">' +
+      '<label class="block aspect-square rounded-xl border-2 border-dashed ' + (src ? 'border-transparent' : 'border-slate-300') + ' bg-slate-50 overflow-hidden cursor-pointer">' +
+        (src ? '<img src="' + esc(src) + '" class="h-full w-full object-cover" referrerpolicy="no-referrer">'
+             : '<div class="h-full w-full flex flex-col items-center justify-center text-slate-400 text-lg">📷</div>') +
+        '<input type="file" accept="image/*" class="hidden" onchange="pickCarePhoto(\'' + t.key + '\', this)">' +
+      '</label>' +
+      (src ? '<button type="button" onclick="removeCarePhoto(\'' + t.key + '\')" class="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-red-500 text-white text-xs leading-5 shadow">&times;</button>' : '') +
+      '<div class="text-[10px] text-center text-slate-600 mt-0.5">' + t.label + '</div>' +
+    '</div>';
+  });
+  $('carePhotoTiles').innerHTML = html;
+}
+function pickCarePhoto(key, input) {
+  if (!input.files || !input.files[0]) return;
+  carePhotoFiles[key] = input.files[0];
+  delete carePhotoRemove[key];
+  renderCarePhotoTiles();
+}
+function removeCarePhoto(key) {
+  delete carePhotoFiles[key];
+  if (carePhotoCurrent[key]) carePhotoRemove[key] = true;
+  renderCarePhotoTiles();
+}
+function resetCarePhotos(current) {
+  carePhotoFiles = {}; carePhotoRemove = {}; carePhotoCurrent = current || {};
+  renderCarePhotoTiles();
+}
+
+function openLightbox(url, caption) {
+  $('lightboxImg').src = url;
+  $('lightboxCaption').textContent = caption || '';
+  $('lightbox').classList.remove('hidden');
+}
+function closeLightbox() { $('lightbox').classList.add('hidden'); $('lightboxImg').src = ''; }
+
+function carePhotoStrip(p) {
+  var ph = (p.careDetail && p.careDetail.photos) || {};
+  var items = CARE_PHOTO_TYPES.filter(function(t) { return ph[t.key]; });
+  if (!items.length) return '';
+  return '<div class="mt-2 flex gap-2 overflow-x-auto">' + items.map(function(t) {
+    return '<button type="button" onclick="openLightbox(\'' + jsq(ph[t.key]) + '\', \'' + jsq(p.name + ' · ' + t.label) + '\')" class="shrink-0 text-center">' +
+      '<img src="' + esc(thumbUrl(ph[t.key], 200)) + '" loading="lazy" class="h-14 w-14 rounded-lg object-cover border border-slate-200" referrerpolicy="no-referrer">' +
+      '<div class="text-[10px] text-slate-500">' + t.label + '</div></button>';
+  }).join('') + '</div>';
+}
+
 function openAddAnimalModal() {
   var form = $('addAnimalForm');
   if (form) form.reset();
   $('an_id').value = '';
   $('cl_logId').value = '';
   $('animalModalTitle').textContent = '🐾 เพิ่มข้อมูลสัตว์เลี้ยงใหม่';
+  resetCarePhotos({});
   $('addAnimalModal').classList.remove('hidden');
 }
 
@@ -876,6 +948,7 @@ function openEditAnimalModal(id) {
   $('an_room').value = p.room || c.addressUnit || '';
   $('cl_logId').value = c.logId || '';
   CARE_FIELDS.forEach(function(k) { var el = $('cl_' + k); if (el) el.value = c[k] || ''; });
+  resetCarePhotos(c.photos || {});
   $('animalModalTitle').textContent = '✏️ แก้ไขข้อมูลสัตว์เลี้ยง & PetCareLog';
   $('addAnimalModal').classList.remove('hidden');
 }
@@ -900,8 +973,16 @@ $('addAnimalForm').addEventListener('submit', function(e) {
     careDetail: careDetail, image: null
   };
 
+  payload.carePhotoRemove = carePhotoRemove;
+  payload.carePhotos = {};
   var fileInput = $('an_file');
-  readImage(fileInput.files && fileInput.files[0], function(img) {
+  var photoKeys = Object.keys(carePhotoFiles);
+  var readNextCarePhoto = function(done) {
+    if (!photoKeys.length) return done();
+    var k = photoKeys.shift();
+    readImage(carePhotoFiles[k], function(img) { if (img) payload.carePhotos[k] = img; readNextCarePhoto(done); });
+  };
+  readNextCarePhoto(function() { readImage(fileInput.files && fileInput.files[0], function(img) {
     payload.image = img;
     callServer(petId ? 'updateAnimal' : 'addAnimal', [payload], function(res) {
       setBusy(btn, false, 'บันทึกข้อมูล');
@@ -911,7 +992,7 @@ $('addAnimalForm').addEventListener('submit', function(e) {
       setBusy(btn, false, 'บันทึกข้อมูล');
       alert('เกิดข้อผิดพลาด: ' + msg);
     });
-  });
+  }); });
 });
 
 function openJobsModal(petId) {

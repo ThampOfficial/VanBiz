@@ -8,7 +8,8 @@ const CONFIG = {
   SPREADSHEET_ID: '13xd4rQNvrmNIuQMhsEr2OBGTShxgcWxsbk9ghfMz8Xw',
   ANIMALS_LOVER_FOLDER_ID: '1QL-6aY3J3yVgi982dTB9PBfCOteShIxe', // โฟลเดอร์ Animals Lover_Images (รูปหน้าปกสัตว์)
   ANIMAL_PHOTOS_FOLDER_ID: '1Sz3uO7AaMH1x7fvQCLsHJsWdfZdkb22Q',  // โฟลเดอร์ AnimalPhotos_Images (รูปเพิ่มเติมสัตว์)
-  PRODUCTS_FOLDER_ID: '1nNZ6XoFefxTW1MrGh5olGUlRNxhiQkJ4',        // โฟลเดอร์ Products_Images (รูปสินค้า)
+  PRODUCTS_FOLDER_ID: '1nNZ6XoFefxTW1MrGh5olGUlRNxhiQkJ4',
+  CARE_PHOTOS_FOLDER_ID: '1eRoMGyfwhYHKa46zzxZH1mX_DpkDdE7w',     // โฟลเดอร์ PetCareLog_Images (รูปจุดวางอาหาร/น้ำ/ถังขยะ/ทรายแมว)        // โฟลเดอร์ Products_Images (รูปสินค้า)
   SHEETS: {
     PRODUCTS: 'Products',
     PETS: 'Animals Lover',
@@ -202,12 +203,13 @@ function cached_(key, force, builder) {
 
 // รายชื่อไฟล์ในโฟลเดอร์รูป (รวมโฟลเดอร์ย่อย) → { full: {ชื่อไฟล์: id}, prefix: {ส่วนหน้าชื่อ: id} }
 const folderMaps_ = {};
-let mapMissed_ = false;
+const missedMaps_ = {};
+function markMiss_(map) { if (map && map._key) missedMaps_[map._key] = true; }
 function getFolderMap_(key, folderId, fresh) {
   if (!fresh && folderMaps_[key]) return folderMaps_[key];
   if (!fresh) {
     const hit = cacheGetJson_(key);
-    if (hit) { hit.fromCache = true; folderMaps_[key] = hit; return hit; }
+    if (hit) { hit.fromCache = true; hit._key = key; folderMaps_[key] = hit; return hit; }
   }
   const full = {}, prefix = {};
   function scan_(folder) {
@@ -227,7 +229,7 @@ function getFolderMap_(key, folderId, fresh) {
     } catch (e) {}
   }
   if (folderId) { try { scan_(DriveApp.getFolderById(folderId)); } catch (e) {} }
-  const map = { full: full, prefix: prefix };
+  const map = { _key: key, full: full, prefix: prefix };
   cachePutJson_(key, map, MAP_TTL_);
   folderMaps_[key] = map;
   return map;
@@ -236,24 +238,28 @@ function getFolderMap_(key, folderId, fresh) {
 function getAnimalsLoverFileMap_(fresh) { return getFolderMap_('fm_cover', CONFIG.ANIMALS_LOVER_FOLDER_ID, fresh); }
 function getAnimalPhotosFileMap_(fresh) { return getFolderMap_('fm_extra', CONFIG.ANIMAL_PHOTOS_FOLDER_ID, fresh); }
 function getProductsFileMap_(fresh) { return getFolderMap_('fm_products', CONFIG.PRODUCTS_FOLDER_ID, fresh); }
+function getCarePhotosFileMap_(fresh) { return getFolderMap_('fm_care', CONFIG.CARE_PHOTOS_FOLDER_ID, fresh); }
 
 // ถ้ารูปบางรูปหาไม่เจอในรายชื่อที่แคชไว้ (เช่นเพิ่งอัปโหลดผ่าน AppSheet) ให้สแกนโฟลเดอร์ใหม่หนึ่งครั้งแล้วคำนวณใหม่
 // สแกนซ้ำได้ไม่เกินทุก 30 นาที (กันกรณีในชีตมี path ของไฟล์ที่ไม่มีอยู่จริง แล้วสแกนทุกครั้ง)
 const RESCAN_GAP_ = 1800;
-function withFreshMapOnMiss_(mapKey, build) {
-  mapMissed_ = false;
+function withFreshMapOnMiss_(mapKeys, build) {
+  const keys = [].concat(mapKeys);
+  keys.forEach(k => { delete missedMaps_[k]; });
   let out = build();
-  const m = folderMaps_[mapKey];
-  if (mapMissed_ && m && m.fromCache) {
-    const cache = CacheService.getScriptCache();
-    if (!cache.get(mapKey + ':rescanned')) {
-      cache.put(mapKey + ':rescanned', '1', RESCAN_GAP_);
-      delete folderMaps_[mapKey];
-      cacheRemove_([mapKey]);
-      mapMissed_ = false;
-      out = build();
+  const cache = CacheService.getScriptCache();
+  let rebuilt = false;
+  keys.forEach(k => {
+    const m = folderMaps_[k];
+    if (missedMaps_[k] && m && m.fromCache && !cache.get(k + ':rescanned')) {
+      cache.put(k + ':rescanned', '1', RESCAN_GAP_);
+      delete folderMaps_[k];
+      cacheRemove_([k]);
+      rebuilt = true;
     }
-  }
+    delete missedMaps_[k];
+  });
+  if (rebuilt) out = build();
   return out;
 }
 
@@ -268,6 +274,7 @@ function addToFolderMap_(mapKey, file) {
   const pre = dot > 0 ? name.substring(0, dot) : name;
   if (pre) map.prefix[pre] = id;
   delete map.fromCache;
+  map._key = mapKey;
   folderMaps_[mapKey] = map;
   cachePutJson_(mapKey, map, MAP_TTL_);
 }
@@ -286,7 +293,7 @@ function resolveCoverPhotoUrl_(rawPath, mapObj, id) {
     if (cleanId && prefixMap[cleanId]) fileId = prefixMap[cleanId];
   }
 
-  if (!fileId && rawPath && !extractDriveId_(rawPath)) mapMissed_ = true;
+  if (!fileId && rawPath && !extractDriveId_(rawPath)) markMiss_(map);
   return fileId ? ('https://lh3.googleusercontent.com/d/' + fileId) : '';
 }
 
@@ -306,7 +313,7 @@ function getAnimalPhotosMap_() {
     const rawPhotoPath = toText_(r[2]);
     if (animalId && rawPhotoPath) {
       const fileId = fileIdFromPath_(rawPhotoPath, fileMap);
-      if (!fileId) mapMissed_ = true;
+      if (!fileId) markMiss_(fileMap);
       if (fileId) {
         const url = 'https://lh3.googleusercontent.com/d/' + fileId;
         if (!map[animalId]) map[animalId] = [];
@@ -317,6 +324,19 @@ function getAnimalPhotosMap_() {
   return map;
 }
 
+// คอลัมน์รูปจุดวางของใน PetCareLog (A=0): H, O เป็น PlacementPhoto เดิม, AA/AB เพิ่มใหม่ท้ายตาราง
+const CARE_PHOTO_COLS_ = { food: 7, litter: 14, water: 26, trash: 27 };
+const CARE_PHOTO_HEADERS_ = { 26: 'WaterPhoto', 27: 'TrashBinPhoto' };
+const CARE_WIDTH_ = 28;
+
+function ensureCareColumns_(sh) {
+  if (sh.getMaxColumns() < CARE_WIDTH_) sh.insertColumnsAfter(sh.getMaxColumns(), CARE_WIDTH_ - sh.getMaxColumns());
+  Object.keys(CARE_PHOTO_HEADERS_).forEach(i => {
+    const cell = sh.getRange(1, Number(i) + 1);
+    if (!toText_(cell.getValue())) cell.setValue(CARE_PHOTO_HEADERS_[i]);
+  });
+}
+
 function getCareLogFullMap_() {
   const ss = ss_();
   const sh = ss.getSheetByName(CONFIG.SHEETS.CARE_LOG);
@@ -324,7 +344,15 @@ function getCareLogFullMap_() {
   if (!sh) return map;
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return map;
-  const values = sh.getRange(2, 1, lastRow - 1, 26).getValues();
+  const values = sh.getRange(2, 1, lastRow - 1, CARE_WIDTH_).getValues();
+  const photoMap = getCarePhotosFileMap_();
+  const photoUrl = (raw) => {
+    const t = toText_(raw);
+    if (!t) return '';
+    const id = fileIdFromPath_(t, photoMap);
+    if (!id) { markMiss_(photoMap); return ''; }
+    return 'https://lh3.googleusercontent.com/d/' + id;
+  };
   values.forEach(r => {
     const animalId = toText_(r[1]).toLowerCase();
     if (animalId && !map[animalId]) { // ใช้แถวแรกของสัตว์ตัวนั้น (แถวเดียวกับที่บันทึกตอนแก้ไข)
@@ -349,7 +377,13 @@ function getCareLogFullMap_() {
         doorBalconyWindow: toText_(r[20]),
         hidingPlace: toText_(r[21]),
         specialInstruction: toText_(r[22]),
-        notes: toText_(r[23])
+        notes: toText_(r[23]),
+        photos: {
+          food: photoUrl(r[CARE_PHOTO_COLS_.food]),
+          water: photoUrl(r[CARE_PHOTO_COLS_.water]),
+          trash: photoUrl(r[CARE_PHOTO_COLS_.trash]),
+          litter: photoUrl(r[CARE_PHOTO_COLS_.litter])
+        }
       };
     }
   });
@@ -384,7 +418,7 @@ function getJobNetTotal_(r) {
 
 // === Pet Sitter Data API ===
 function getPetSitterData(force) {
-  return cached_('pets', force, () => withFreshMapOnMiss_('fm_cover', getPetSitterData_));
+  return cached_('pets', force, () => withFreshMapOnMiss_(['fm_cover', 'fm_care'], getPetSitterData_));
 }
 
 function getPetSitterData_() {
@@ -507,7 +541,8 @@ function savePetCareLog_(data) {
   const ss = ss_();
   let sh = ss.getSheetByName(CONFIG.SHEETS.CARE_LOG);
   if (!sh) sh = ss.insertSheet(CONFIG.SHEETS.CARE_LOG);
-  const WIDTH = 26;
+  ensureCareColumns_(sh);
+  const WIDTH = CARE_WIDTH_;
   const c = data.careDetail || {};
   const foundRow = findRowById_(sh, data.id, 2);
 
@@ -546,6 +581,22 @@ function savePetCareLog_(data) {
   set(23, c.notes);                  // Notes
   if (c.water !== undefined && toText_(row[24])) row[24] = c.water;           // Water (คอลัมน์ซ้ำ)
   if (c.medication !== undefined && toText_(row[25])) row[25] = c.medication; // Medication (คอลัมน์ซ้ำ)
+
+  // รูปจุดวางของ: อัปโหลดรูปใหม่ หรือลบรูปออก (path แบบเดียวกับ AppSheet: PetCareLog_Images/<LogID>.PlacementPhoto.<เวลา>.jpg)
+  const photos = data.carePhotos || {};
+  const removes = data.carePhotoRemove || {};
+  Object.keys(CARE_PHOTO_COLS_).forEach(k => {
+    const col = CARE_PHOTO_COLS_[k];
+    const img = photos[k];
+    if (img && img.base64) {
+      const name = toText_(row[0]) + '.PlacementPhoto_' + k + '.' + Date.now() + '.' + fileExt_(img.fileName, img.mimeType);
+      const file = saveImageToFolder_(img, CONFIG.CARE_PHOTOS_FOLDER_ID, name);
+      addToFolderMap_('fm_care', file);
+      row[col] = 'PetCareLog_Images/' + file.getName();
+    } else if (removes[k]) {
+      row[col] = '';
+    }
+  });
 
   if (foundRow) sh.getRange(foundRow, 1, 1, WIDTH).setValues([row]);
   else sh.appendRow(row);
